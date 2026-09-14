@@ -57,7 +57,18 @@ desktop-mini-bot --mock-llm --goal "click Save"
 desktop-mini-bot --config ~/.config/desktop-mini-bot/config.json --goal "click Save"
 ```
 
+## Run
+
+```bash
+./run.sh                     # asks for a goal (mock / practice)
+./run.sh "click Save"        # offline mock brain
+./run.sh --local "click Save"  # local model via ~/.config/desktop-mini-bot/config.json
+```
+
+Mock = practice dummy. Local = your Ollama (or other) model on 127.0.0.1.
+
 ## Quick start (no install)
+
 
 ```bash
 # offline demo (no model server)
