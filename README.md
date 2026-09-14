@@ -28,22 +28,51 @@ Roadmap:
 4. **Phase 3** — AT-SPI for native Linux apps
 5. **Later** — gated `run_command` (allowlisted shell)
 
-## Quick start
+## Install
+
+```bash
+git clone https://github.com/jor-teron/desktop-mini-bot.git
+cd desktop-mini-bot
+./install.sh
+```
+
+Menu options:
+
+1. **Agent only** — offline, no downloads (launcher + config)
+2. **Agent + local model** — sets up Ollama pull (one-time network, then offline)
+3. **Tests / smoke** — unittest + `--mock-llm` demo
+
+Non-interactive:
+
+```bash
+./install.sh --agent        # offline
+./install.sh --with-model   # agent + ollama model helper
+./install.sh --test
+```
+
+After install:
+
+```bash
+desktop-mini-bot --mock-llm --goal "click Save"
+desktop-mini-bot --config ~/.config/desktop-mini-bot/config.json --goal "click Save"
+```
+
+## Quick start (no install)
 
 ```bash
 # offline demo (no model server)
-PYTHONPATH=src python -m desktop_mini_bot --mock-llm --goal "click Save"
+PYTHONPATH=src python3 -m desktop_mini_bot --mock-llm --goal "click Save"
 
-# with Ollama (example)
-# ollama pull <your-1b-tool-model>
+# with local Ollama (example)
 cp config.example.json config.json
-PYTHONPATH=src python -m desktop_mini_bot --config config.json --goal "Open settings and click Save"
+PYTHONPATH=src python3 -m desktop_mini_bot --config config.json --goal "Open settings and click Save"
 ```
 
 Tests:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+# or: ./install.sh --test
 ```
 
 ## Action wire format
