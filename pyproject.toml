@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "desktop-mini-bot"
+version = "0.1.0"
+description = "Lightweight no-vision Linux desktop CUA for low-RAM machines and ~10 tok/s local models"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "jor-teron" }]
+# Intentionally empty — stdlib only for the agent core.
+dependencies = []
+
+[project.scripts]
+desktop-mini-bot = "desktop_mini_bot.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
