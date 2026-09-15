@@ -1,35 +1,49 @@
 #!/usr/bin/env bash
-# desktop-mini-bot installer — local / offline-friendly (Debian & friends)
+# desktop-mini-bot — one-line install/update (Ollama-style)
+#   curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
+#   curl -fsSL .../install.sh | bash -s -- --browser
+#   curl -fsSL .../install.sh | bash -s -- --update
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_URL="${DMB_REPO:-https://github.com/jor-teron/desktop-mini-bot.git}"
+DEST="${DMB_HOME:-$HOME/desktop-mini-bot}"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/desktop-mini-bot"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
-RED=$'\033[31m'; GRN=$'\033[32m'; YLW=$'\033[33m'; DIM=$'\033[2m'; RST=$'\033[0m'
+RED=$'\033[31m'; GRN=$'\033[32m'; YLW=$'\033[33m'; RST=$'\033[0m'
+info(){ printf '%s\n' "$*"; }
+ok(){ printf '%s%s%s\n' "$GRN" "$*" "$RST"; }
+warn(){ printf '%s%s%s\n' "$YLW" "$*" "$RST"; }
+die(){ printf '%s%s%s\n' "$RED" "$*" "$RST" >&2; exit 1; }
 
-info()  { printf '%s\n' "$*"; }
-ok()    { printf '%s%s%s\n' "$GRN" "$*" "$RST"; }
-warn()  { printf '%s%s%s\n' "$YLW" "$*" "$RST"; }
-die()   { printf '%s%s%s\n' "$RED" "$*" "$RST" >&2; exit 1; }
+# If this script is not inside a checkout (e.g. curl | bash), clone/update then re-exec.
+_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+if [[ -z "${_SRC}" || ! -f "${_SRC}/src/desktop_mini_bot/__main__.py" ]]; then
+  command -v git >/dev/null 2>&1 || die "git required (sudo apt install git)"
+  if [[ -d "$DEST/.git" ]]; then
+    info "Updating $DEST …"
+    git -C "$DEST" pull --ff-only || die "git pull failed"
+  else
+    info "Installing into $DEST …"
+    git clone --depth 1 "$REPO_URL" "$DEST" || die "git clone failed"
+  fi
+  exec bash "$DEST/install.sh" "$@"
+fi
+ROOT="$_SRC"
 
 need_python() {
-  command -v python3 >/dev/null 2>&1 || die "python3 not found. On Debian: sudo apt install python3"
-  local ver
-  ver="$(python3 -c 'import sys; print("%d.%d"%sys.version_info[:2])')"
+  command -v python3 >/dev/null 2>&1 || die "python3 not found (sudo apt install python3)"
   python3 -c 'import sys; raise SystemExit(0 if sys.version_info>=(3,10) else 1)' \
-    || die "Need Python >= 3.10 (found $ver)"
-  ok "Python $ver OK"
+    || die "Need Python >= 3.10"
+  ok "Python $(python3 -c 'import sys; print("%d.%d"%sys.version_info[:2])') OK"
 }
 
 install_agent() {
-  info "Installing desktop-mini-bot launcher…"
+  info "Installing launcher…"
   need_python
   mkdir -p "$BIN_DIR" "$CONFIG_DIR"
-
-  # Editable layout via a tiny launcher (avoids requiring pip/setuptools).
   cat > "$BIN_DIR/desktop-mini-bot" << LAUNCH
 #!/usr/bin/env bash
 ROOT="$ROOT"
@@ -41,6 +55,12 @@ export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
 exec python3 -m desktop_mini_bot "\$@"
 LAUNCH
   chmod +x "$BIN_DIR/desktop-mini-bot"
+  # Convenience: update/reinstall in one command
+  cat > "$BIN_DIR/desktop-mini-bot-update" << UPD
+#!/usr/bin/env bash
+exec bash "$ROOT/install.sh" --update "\$@"
+UPD
+  chmod +x "$BIN_DIR/desktop-mini-bot-update"
 
   if [[ ! -f "$CONFIG_FILE" ]]; then
     cp "$ROOT/config.example.json" "$CONFIG_FILE"
@@ -48,91 +68,72 @@ LAUNCH
   else
     warn "Keeping existing $CONFIG_FILE"
   fi
-
   if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    warn "Add to PATH (e.g. in ~/.bashrc):"
-    info "  export PATH=\"$BIN_DIR:\$PATH\""
+    warn "Add to PATH:  export PATH=\"$BIN_DIR:\$PATH\""
   fi
-
-  ok "Agent installed."
-  info "Try:  desktop-mini-bot --mock-llm --goal \"click Save\""
-  info "  or:  $BIN_DIR/desktop-mini-bot --mock-llm --goal \"click Save\""
+  ok "Agent installed at $ROOT"
+  info "Chat UI:  desktop-mini-bot --ui"
+  info "Or:       $ROOT/run.sh --ui"
 }
 
-# One-time network may be needed to fetch Ollama / the model weights.
-# After that, everything stays local (127.0.0.1).
+do_update() {
+  info "Updating from git…"
+  if [[ -d "$ROOT/.git" ]]; then
+    git -C "$ROOT" pull --ff-only || die "git pull failed"
+  else
+    warn "Not a git checkout; skip pull"
+  fi
+  install_agent
+  # Refresh browser deps if venv already exists
+  if [[ -x "$ROOT/.venv/bin/python" ]]; then
+    info "Refreshing Playwright…"
+    install_browser
+  else
+    ok "Update done (agent). For browser: re-run with --browser"
+  fi
+}
+
 install_ollama_hint() {
   info "Local model runtime (Ollama)…"
-  if command -v ollama >/dev/null 2>&1; then
-    ok "Ollama already installed: $(command -v ollama)"
-  else
-    warn "Ollama is not installed."
-    info "Install once (needs network), then models run fully offline:"
-    info "  curl -fsSL https://ollama.com/install.sh | sh"
-    info "Or Debian manual: https://ollama.com/download/linux"
+  if ! command -v ollama >/dev/null 2>&1; then
+    warn "Ollama not installed. One-time: curl -fsSL https://ollama.com/install.sh | sh"
     return 0
   fi
-
-  # Prefer a small tool-call model; user can change in config.
+  ok "Ollama: $(command -v ollama)"
   local model="${DMB_MODEL:-hammer2.0:1.5b}"
-  info "Pulling model '$model' (one-time download; then offline)…"
+  info "Pulling '$model'…"
   if ollama pull "$model"; then
     ok "Model ready: $model"
   else
-    warn "Could not pull '$model'."
-    info "List local models: ollama list"
-    info "Set any local tag in $CONFIG_FILE → \"model\""
+    warn "Pull failed — set model in $CONFIG_FILE"
   fi
-
-  # Point config at local Ollama if we just set things up.
   if [[ -f "$CONFIG_FILE" ]]; then
     python3 - "$CONFIG_FILE" "$model" <<'PY'
-import json, sys
-path, model = sys.argv[1], sys.argv[2]
-with open(path, encoding="utf-8") as f:
-    cfg = json.load(f)
-cfg["base_url"] = "http://127.0.0.1:11434/v1"
-cfg["api_key"] = "ollama"
-cfg["model"] = model
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(cfg, f, indent=2)
-    f.write("\n")
-print("updated", path)
+import json,sys
+p,m=sys.argv[1],sys.argv[2]
+c=json.load(open(p,encoding="utf-8"))
+c.update({"base_url":"http://127.0.0.1:11434/v1","api_key":"ollama","model":m})
+json.dump(c, open(p,"w",encoding="utf-8"), indent=2); open(p,"a",encoding="utf-8").write("\n")
+print("updated",p)
 PY
   fi
-
-  info "Start server if needed:  ollama serve"
-  info "Run agent:  desktop-mini-bot --config $CONFIG_FILE --goal \"click Save\""
 }
 
-
 install_browser() {
-  info "Installing Playwright (browser hands)…"
+  info "Installing Playwright…"
   need_python
   local venv="$ROOT/.venv"
-  # Recreate if missing or broken (empty dir / no python).
   if [[ ! -x "$venv/bin/python" ]]; then
     rm -rf "$venv"
-    python3 -m venv "$venv" || die "python3 -m venv failed (try: sudo apt install python3-venv python3-full)"
+    python3 -m venv "$venv" || die "venv failed (sudo apt install python3-venv python3-full)"
   fi
-  [[ -x "$venv/bin/python" ]] || die "venv has no python at $venv/bin/python"
+  [[ -x "$venv/bin/python" ]] || die "no $venv/bin/python"
   "$venv/bin/python" -m pip install -U pip >/dev/null
-  "$venv/bin/python" -m pip install -U "playwright>=1.40" || die "pip install playwright failed"
-  "$venv/bin/python" -m playwright install chromium || die "playwright install chromium failed"
-  ok "Playwright Chromium ready in $venv"
-  # Prefer venv python from the launcher when present.
-  cat > "$BIN_DIR/desktop-mini-bot" << LAUNCH
-#!/usr/bin/env bash
-ROOT="$ROOT"
-if [[ -x "\$ROOT/.venv/bin/python" ]]; then
-  export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
-  exec "\$ROOT/.venv/bin/python" -m desktop_mini_bot "\$@"
-fi
-export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
-exec python3 -m desktop_mini_bot "\$@"
-LAUNCH
-  chmod +x "$BIN_DIR/desktop-mini-bot"
-  info "Try:  ./run.sh --browser --mock \"click Save\""
+  "$venv/bin/python" -m pip install -U "playwright>=1.40" || die "pip playwright failed"
+  "$venv/bin/python" -m playwright install chromium || die "chromium install failed"
+  ok "Playwright ready"
+  install_agent
+  info "Try:  $ROOT/run.sh --browser --mock \"click Save\""
 }
 
 smoke_test() {
@@ -146,53 +147,57 @@ smoke_test() {
 
 usage() {
   cat <<USAGE
-Usage: ./install.sh [option]
+desktop-mini-bot installer
 
-  (no args)     Interactive menu
-  --agent       Install agent launcher + config only (fully offline)
-  --browser     Install Playwright + Chromium (needed for real browser)
-  --with-model  Agent + help install/pull local Ollama model
-  --test        Run unit tests + mock-llm smoke demo
-  --help        Show this help
+One-line (install or update):
+  curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 
-Env:
-  PREFIX=$PREFIX     install bin here
-  DMB_MODEL=...      model tag for ollama pull (default hammer2.0:1.5b)
+With browser hands:
+  curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash -s -- --browser
 
-Everything talks to 127.0.0.1 — no cloud API. Model download is the only
-step that needs network, and only once.
+From a checkout:
+  ./install.sh              menu
+  ./install.sh --agent      launcher only
+  ./install.sh --browser    agent + Playwright
+  ./install.sh --with-model agent + Ollama model helper
+  ./install.sh --update     git pull + refresh install
+  ./install.sh --test
+
+Env: DMB_HOME=$DEST  DMB_REPO=...  DMB_MODEL=...  PREFIX=$PREFIX
 USAGE
 }
 
 menu() {
   cat <<MENU
 
-desktop-mini-bot installer
-  1) Agent only              (offline — no model download)
-  2) Agent + browser hands   (Playwright / Chromium)
-  3) Agent + local model     (Ollama; one-time download)
-  4) Run tests / smoke
-  5) Quit
+desktop-mini-bot
+  1) Agent only
+  2) Agent + browser
+  3) Agent + local model
+  4) Update (git pull + refresh)
+  5) Tests
+  6) Quit
 
 MENU
-  local choice
-  read -r -p "Choose [1-5]: " choice
-  case "$choice" in
+  local c; read -r -p "Choose [1-6]: " c
+  case "$c" in
     1) install_agent ;;
     2) install_agent; install_browser ;;
     3) install_agent; install_ollama_hint ;;
-    4) smoke_test ;;
-    5) exit 0 ;;
+    4) do_update ;;
+    5) smoke_test ;;
+    6) exit 0 ;;
     *) die "Invalid choice" ;;
   esac
 }
 
 main() {
   case "${1:-}" in
-    "" ) menu ;;
+    "") menu ;;
     --agent) install_agent ;;
     --browser) install_agent; install_browser ;;
     --with-model) install_agent; install_ollama_hint ;;
+    --update) do_update ;;
     --test) smoke_test ;;
     -h|--help) usage ;;
     *) usage; die "Unknown option: $1" ;;

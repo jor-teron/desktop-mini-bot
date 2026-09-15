@@ -24,27 +24,25 @@ Most computer-use agents assume a fast cloud VLM and screenshots. This one does 
 - **Phase 3:** AT-SPI native apps
 - **Later:** gated `run_command`
 
-## Install
+## Install / update (one line)
 
 ```bash
-git clone https://github.com/jor-teron/desktop-mini-bot.git
-cd desktop-mini-bot
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 ```
 
-Menu:
-
-1. Agent only (offline)
-2. Agent + **browser hands** (Playwright / Chromium)
-3. Agent + local model (Ollama)
-4. Tests
+That clones or updates `~/desktop-mini-bot` and installs the launcher.
 
 ```bash
-./install.sh --agent
-./install.sh --browser
-./install.sh --with-model
-./install.sh --test
+# + browser hands (Playwright / Chromium)
+curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash -s -- --browser
+
+# update later
+curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash -s -- --update
+# or, if already on PATH:
+desktop-mini-bot-update
 ```
+
+From a checkout: `./install.sh` (menu) · `--agent` · `--browser` · `--with-model` · `--update` · `--test`
 
 ## Run
 
