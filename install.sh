@@ -23,6 +23,14 @@ die(){ printf '%s✗ %s%s\n' "$RED" "$*" "$RST" >&2; exit 1; }
 
 have(){ command -v "$1" >/dev/null 2>&1; }
 
+_apt_install() {
+  local pkgs=("$@")
+  have sudo || die "need sudo to install: ${pkgs[*]}"
+  info "Installing packages: ${pkgs[*]}"
+  sudo apt-get update -y || die "apt-get update failed"
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}"     || die "apt-get install failed: ${pkgs[*]}"
+}
+
 # --- args (before bootstrap so curl|bash -s -- flags work) ---
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -69,14 +77,6 @@ if [[ -z "${_SRC}" || ! -f "${_SRC}/src/desktop_mini_bot/__main__.py" ]]; then
 fi
 ROOT="$_SRC"
 
-_apt_install() {
-  local pkgs=("$@")
-  have sudo || die "need sudo to install: ${pkgs[*]}"
-  info "Installing packages: ${pkgs[*]}"
-  sudo apt-get update -y || die "apt-get update failed"
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}" \
-    || die "apt-get install failed: ${pkgs[*]}"
-}
 
 ensure_system_deps() {
   [[ "$SKIP_APT" -eq 1 ]] && { warn "Skipping apt (--skip-apt)"; return 0; }
