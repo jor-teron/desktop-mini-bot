@@ -7,25 +7,25 @@ PYTHON=python3
 
 usage(){ cat <<USAGE
 ./run.sh --ui
-./run.sh --browser --mock "open google.com"
-./run.sh --browser --local "open https://www.google.com"
-./run.sh --browser --mock "click Save"
-Config: $CONFIG
+./run.sh --browser "open google.com"
+./run.sh --browser --provider ollama --model hammer2.0:1.5b "open https://www.google.com"
+Config: $CONFIG  (api_key= for Gemini)
 USAGE
 }
 
-MODE=mock; GOAL=""; BROWSER=0; HEADLESS=0; URL=""; UI=0; PORT=8765; MODEL=""
+GOAL=""; HEADLESS=0; URL=""; UI=0; PORT=8765; MODEL=""; PROVIDER=""; API_KEY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
-    --mock) MODE=mock; shift ;;
-    --local) MODE=local; shift ;;
-    --browser) BROWSER=1; shift ;;
+    --mock|--local|--dry-run) echo "note: mock/dry-run removed in v0.2 — real browser only" >&2; shift ;;
+    --browser) shift ;;
     --headless) HEADLESS=1; shift ;;
     --ui) UI=1; shift ;;
     --port) PORT="$2"; shift 2 ;;
     --url) URL="$2"; shift 2 ;;
     --model) MODEL="$2"; shift 2 ;;
+    --provider) PROVIDER="$2"; shift 2 ;;
+    --api-key) API_KEY="$2"; shift 2 ;;
     --config) CONFIG="$2"; shift 2 ;;
     --) shift; GOAL="$*"; break ;;
     -*) echo "unknown: $1" >&2; exit 1 ;;
@@ -42,10 +42,10 @@ if [[ -z "$GOAL" ]]; then
   read -r -p "Goal? " GOAL
   [[ -n "$GOAL" ]] || exit 1
 fi
-ARGS=(--goal "$GOAL" --config "$CONFIG")
-[[ "$BROWSER" -eq 1 ]] && ARGS+=(--browser) || ARGS+=(--dry-run)
+ARGS=(--goal "$GOAL" --config "$CONFIG" --browser)
 [[ "$HEADLESS" -eq 1 ]] && ARGS+=(--headless)
 [[ -n "$URL" ]] && ARGS+=(--url "$URL")
 [[ -n "$MODEL" ]] && ARGS+=(--model "$MODEL")
-[[ "$MODE" == mock ]] && ARGS+=(--mock-llm)
+[[ -n "$PROVIDER" ]] && ARGS+=(--provider "$PROVIDER")
+[[ -n "$API_KEY" ]] && ARGS+=(--api-key "$API_KEY")
 exec "$PYTHON" -m desktop_mini_bot "${ARGS[@]}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# desktop-mini-bot 0.1.1 — one-paste install/update (no pip; all under project dir)
+# desktop-mini-bot 0.2.0 — one-paste install/update (no pip; all under project dir)
 #   curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 set -euo pipefail
 
@@ -74,7 +74,7 @@ ok "System deps OK"
 
 if [[ ! -f "$ROOT/config.txt" ]]; then
   cp "$ROOT/config.example.txt" "$ROOT/config.txt"
-  ok "Wrote $ROOT/config.txt"
+  ok "Wrote $ROOT/config.txt — set api_key= for Gemini (https://aistudio.google.com/apikey)"
 else
   warn "Keeping $ROOT/config.txt"
 fi
@@ -102,15 +102,15 @@ if [[ "$WITH_MODEL" -eq 1 ]]; then
   fi
 fi
 
-( cd "$ROOT" && PYTHONPATH=app python3 -m desktop_mini_bot --mock-llm --goal "click Save" >/dev/null ) \
+( cd "$ROOT" && PYTHONPATH=app python3 -c "from desktop_mini_bot.llm import make_llm, guess_url; from desktop_mini_bot.schema import parse_action; assert guess_url('open google.com'); parse_action('{\"a\":\"done\",\"s\":\"ok\"}'); print('ok')" ) \
   || die "verify failed"
-ok "Verify passed (v0.1.1)"
+ok "Verify passed (v0.2.0)"
 
 cat <<S
 
-${GRN}Ready 0.1.1${RST} — $ROOT
-  Config: $ROOT/config.txt   (model=… from ollama list)
-  Chat:   $ROOT/run.sh --ui   (model dropdown)
-  Google: $ROOT/run.sh --browser --mock "open google.com"
+${GRN}Ready 0.2.0${RST} — $ROOT
+  Config: $ROOT/config.txt   (set api_key= for Gemini)
+  Chat:   $ROOT/run.sh --ui
+  Run:    $ROOT/run.sh --browser "open google.com"
 
 S

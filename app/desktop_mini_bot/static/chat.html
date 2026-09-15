@@ -5,38 +5,55 @@
 <title>desktop-mini-bot</title>
 <style>
 body{font:16px system-ui,sans-serif;max-width:36rem;margin:1.5rem auto;padding:0 1rem;background:#111;color:#eee}
-textarea,select{width:100%;padding:.6rem;border-radius:8px;border:1px solid #333;background:#1a1a1a;color:#eee;font:inherit}
+input,textarea,select{width:100%;padding:.6rem;border-radius:8px;border:1px solid #333;background:#1a1a1a;color:#eee;font:inherit;box-sizing:border-box}
 textarea{min-height:4.5rem}
-.opts{margin:.6rem 0;color:#aaa;font-size:.9rem;display:flex;flex-wrap:wrap;gap:.8rem}
+.opts{margin:.6rem 0;color:#aaa;font-size:.9rem;display:flex;flex-wrap:wrap;gap:.8rem;align-items:center}
 label.block{display:block;margin:.5rem 0 .25rem;color:#aaa;font-size:.85rem}
 button{margin-right:.4rem;padding:.45rem .9rem;border:0;border-radius:8px;background:#3d8bfd;color:#fff;cursor:pointer}
-button:disabled{opacity:.5}#log{white-space:pre-wrap;font:12px ui-monospace,monospace;background:#1a1a1a;border-radius:8px;padding:.8rem;min-height:8rem;margin-top:1rem}
+button.secondary{background:#333}button:disabled{opacity:.5}
+#log{white-space:pre-wrap;font:12px ui-monospace,monospace;background:#1a1a1a;border-radius:8px;padding:.8rem;min-height:8rem;margin-top:1rem}
 #status{color:#8ab;margin:.5rem 0;font-size:.9rem}.err{color:#f66}.ok{color:#6c6}
+.row{display:flex;gap:.5rem;align-items:center} .row>*{flex:1} .row button{flex:0}
 </style>
 <h1>desktop-mini-bot</h1>
-<p style="color:#888;margin-top:0">Local chat · pick a model · bot acts in a separate window</p>
+<p style="color:#888;margin-top:0">Real CUA · live browser · Gemini default · API key in config.txt</p>
+<label class="block" for="provider">Provider</label>
+<select id="provider">
+  <option value="gemini">Google Gemini (online)</option>
+  <option value="ollama">Ollama (local)</option>
+</select>
 <label class="block" for="model">Model</label>
-<select id="model"><option value="">Loading models…</option></select>
-<textarea id="g" placeholder="e.g. open google.com   or   click Save"></textarea>
+<select id="model"><option value="">Loading…</option></select>
+<label class="block" for="apiKey">API key (saved to config.txt)</label>
+<div class="row">
+  <input id="apiKey" type="password" placeholder="paste Gemini API key" autocomplete="off"/>
+  <button type="button" class="secondary" id="saveKey">Save</button>
+</div>
+<textarea id="g" placeholder="e.g. open google.com and search for cats"></textarea>
 <div class="opts">
-<label><input id="m" type="checkbox" checked> Mock brain</label>
-<label><input id="b" type="checkbox" checked> Browser hands</label>
 <label><input id="h" type="checkbox"> Headless</label>
 </div>
 <button id="go">Send</button>
 <div id="status">Ready</div>
 <pre id="log"></pre>
 <script>
-const log=document.getElementById('log'),st=document.getElementById('status'),go=document.getElementById('go'),modelEl=document.getElementById('model');
+const log=document.getElementById('log'),st=document.getElementById('status'),go=document.getElementById('go');
+const modelEl=document.getElementById('model'),providerEl=document.getElementById('provider'),apiKeyEl=document.getElementById('apiKey');
 const line=t=>log.textContent+=t+'\n';
+async function loadConfig(){
+  try{
+    const r=await fetch('/api/config'); const j=await r.json();
+    if(j.provider) providerEl.value=j.provider;
+    if(j.has_api_key) apiKeyEl.placeholder='saved in config.txt (leave blank to keep)';
+  }catch(e){}
+}
 async function loadModels(){
   try{
-    const r=await fetch('/api/models');
-    const j=await r.json();
+    const r=await fetch('/api/models'); const j=await r.json();
     modelEl.innerHTML='';
     const models=j.models||[];
     if(!models.length){
-      modelEl.innerHTML='<option value="">(no Ollama models — ollama list)</option>';
+      modelEl.innerHTML='<option value="">(no models — check provider / ollama list)</option>';
       return;
     }
     for(const name of models){
@@ -49,13 +66,29 @@ async function loadModels(){
     modelEl.innerHTML='<option value="">(could not load models)</option>';
   }
 }
+providerEl.onchange=async()=>{
+  await fetch('/api/save-key',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({provider:providerEl.value})});
+  await loadModels();
+};
+document.getElementById('saveKey').onclick=async()=>{
+  const key=apiKeyEl.value.trim();
+  if(!key){st.className='err';st.textContent='Paste a key first (or leave blank if already saved)';return}
+  const r=await fetch('/api/save-key',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({api_key:key,provider:providerEl.value,model:modelEl.value||null})});
+  const j=await r.json();
+  if(j.ok){st.className='ok';st.textContent='API key saved to config.txt';apiKeyEl.value='';apiKeyEl.placeholder='saved in config.txt (leave blank to keep)'}
+  else{st.className='err';st.textContent=j.error||'Save failed'}
+};
 async function run(){
   const goal=document.getElementById('g').value.trim();
   if(!goal){st.className='err';st.textContent='Type a goal';return}
   go.disabled=true;st.className='';st.textContent='Running…';line('— '+goal);
+  const body={goal,headless:h.checked,model:modelEl.value||null,provider:providerEl.value};
+  const typed=apiKeyEl.value.trim();
+  if(typed) body.api_key=typed;
   try{
-    const res=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({goal,mock:m.checked,browser:b.checked,headless:h.checked,model:modelEl.value||null})});
+    const res=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!res.ok||!res.body)throw new Error('HTTP '+res.status);
     const r=res.body.getReader(),d=new TextDecoder();let buf='';
     while(true){
@@ -81,5 +114,5 @@ async function run(){
   finally{go.disabled=false}
 }
 go.onclick=run;
-loadModels();
+(async()=>{await loadConfig();await loadModels()})();
 </script>

@@ -10,7 +10,6 @@ _ROOT: Path | None = None
 def project_root() -> Path:
     global _ROOT
     if _ROOT is None:
-        # app/desktop_mini_bot/paths.py -> repo root
         _ROOT = Path(__file__).resolve().parents[2]
     return _ROOT
 
@@ -34,7 +33,9 @@ def ensure_config() -> Path:
     if not cfg.is_file():
         example = project_root() / "config.example.txt"
         cfg.write_text(
-            example.read_text(encoding="utf-8") if example.is_file() else "model=hammer2.0:1.5b\n",
+            example.read_text(encoding="utf-8")
+            if example.is_file()
+            else "provider=gemini\nmodel=gemini-3.5-flash-lite\napi_key=\n",
             encoding="utf-8",
         )
     return cfg

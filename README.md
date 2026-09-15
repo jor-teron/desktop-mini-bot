@@ -1,8 +1,6 @@
 # desktop-mini-bot
 
-Lightweight **no-vision** Linux desktop CUA for **low-RAM** machines and **~10 tok/s** local models.
-
-**v0.1.1** — stdlib only (no pip), plain `config.txt`, clean `app/` layout, web UI model dropdown.
+Lightweight **no-vision** Linux desktop CUA. **v0.2.0** is a real browser agent: **Google Gemini** online by default (`gemini-3.5-flash-lite`), **Ollama** optional. Stdlib only (no pip). API key lives in plain `config.txt`.
 
 ## Install / update
 
@@ -10,33 +8,45 @@ Lightweight **no-vision** Linux desktop CUA for **low-RAM** machines and **~10 t
 curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 ```
 
-## Layout
-
-```text
-desktop-mini-bot/
-  README.md  LICENSE  install.sh  run.sh
-  config.txt              # your settings (plain text)
-  config.example.txt
-  app/                    # code, tests, examples, chrome-data/
-```
-
 ## Config
 
-Edit `config.txt`:
+Copy `config.example.txt` → `config.txt` (install does this). Put your key there:
 
 ```text
-model=your-ollama-tag
-base_url=http://127.0.0.1:11434/v1
+provider=gemini
+api_key=YOUR_KEY
+model=gemini-3.5-flash-lite
 ```
 
-Or pick the model in the web UI dropdown (`./run.sh --ui`).
+Get a key: https://aistudio.google.com/apikey  
+`config.txt` is gitignored — do not commit it.
+
+For local models:
+
+```text
+provider=ollama
+model=your-ollama-tag
+ollama_base_url=http://127.0.0.1:11434/v1
+```
 
 ## Run
 
 ```bash
 ./run.sh --ui
-./run.sh --browser --mock "open google.com"
-./run.sh --browser --local "open https://www.google.com"
+./run.sh --browser "open google.com"
+./run.sh --browser --provider ollama --model hammer2.0:1.5b "open https://www.google.com"
+```
+
+The web UI lets you pick provider/model and **Save** the API key into `config.txt`.
+
+## Layout
+
+```text
+desktop-mini-bot/
+  README.md  LICENSE  install.sh  run.sh
+  config.txt              # your settings (plain text, not committed)
+  config.example.txt
+  app/                    # code, tests, chrome-data/
 ```
 
 ## License

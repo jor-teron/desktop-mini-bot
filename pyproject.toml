@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "desktop-mini-bot"
-version = "0.1.1"
-description = "Lightweight no-vision Linux desktop CUA for low-RAM machines and ~10 tok/s local models"
+version = "0.2.0"
+description = "Lightweight no-vision Linux desktop CUA — Gemini online default, Ollama optional"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

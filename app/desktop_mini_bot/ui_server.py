@@ -1,4 +1,4 @@
-"""Minimal local chat UI — stdlib only. Models from Ollama."""
+"""Minimal local chat UI — stdlib only. Gemini default; Ollama optional."""
 
 from __future__ import annotations
 
@@ -10,17 +10,20 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from .config import load_config, save_model
-from .fake_ui import FakeUI
-from .llm import HttpLLM, MockLLM, guess_url
+from .config import load_config, set_keys
+from .llm import make_llm, guess_url
 from .loop import SYSTEM_BROWSER, run_loop
 from .paths import project_root
 
 CHAT = Path(__file__).with_name("static") / "chat.html"
 
-
-def _demo() -> str:
-    return (project_root() / "app" / "examples" / "demo.html").as_uri()
+# Sensible Gemini model picks for the dropdown (online)
+GEMINI_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
+    "gemini-2.0-flash",
+]
 
 
 def _sse(event: str, data: dict[str, Any]) -> bytes:
@@ -28,7 +31,6 @@ def _sse(event: str, data: dict[str, Any]) -> bytes:
 
 
 def list_ollama_models(base_url: str) -> list[str]:
-    # OpenAI-compatible root is .../v1 — tags API is on host root
     root = base_url.rstrip("/")
     if root.endswith("/v1"):
         root = root[:-3]
@@ -41,47 +43,84 @@ def list_ollama_models(base_url: str) -> list[str]:
         return []
 
 
-def _start_url(goal: str, cfg: dict, browser: bool) -> str:
+def _start_url(goal: str, cfg: dict) -> str:
     guessed = guess_url(goal)
     if guessed:
         return guessed
     configured = (cfg.get("start_url") or "").strip()
-    if configured and configured not in {"demo", "about:blank"}:
+    if configured and configured != "about:blank":
         return configured
-    g = goal.lower()
-    if browser and any(w in g for w in ("save", "demo", "settings")) and "http" not in g:
-        return _demo()
-    return configured or "about:blank"
+    return "about:blank"
 
 
-def _run(goal: str, mock: bool, browser: bool, headless: bool, config: str | None, model: str | None, emit: Callable) -> None:
+def _run(
+    goal: str,
+    headless: bool,
+    config: str | None,
+    model: str | None,
+    provider: str | None,
+    api_key: str | None,
+    emit: Callable,
+) -> None:
     cfg = load_config(config)
+    updates: dict[str, str] = {}
+    if provider:
+        cfg["provider"] = provider
+        updates["provider"] = provider
     if model:
         cfg["model"] = model
+        updates["model"] = model
+    if api_key is not None and api_key != "":
+        cfg["api_key"] = api_key
+        updates["api_key"] = api_key
+    if updates:
         try:
-            save_model(model)
+            set_keys(updates)
         except Exception:
             pass
-    llm = MockLLM(goal=goal, browser=browser) if mock else HttpLLM(cfg["base_url"], cfg["api_key"], cfg["model"])
+
+    try:
+        llm = make_llm(cfg)
+    except Exception as e:
+        emit("error", {"message": str(e)})
+        return
+
     br = None
     try:
-        if browser:
-            from .browser import BrowserUI
-            start = _start_url(goal, cfg, True)
-            br = BrowserUI(headless=headless or bool(cfg.get("headless")), start_url=start)
-            br.start()
-            ui, system = br, SYSTEM_BROWSER
-            emit("info", {"message": f"browser: {start}"})
-            emit("info", {"message": f"model={'mock' if mock else cfg.get('model')}"})
-        else:
-            ui, system = FakeUI(), None
-        steps = run_loop(
-            goal=goal, llm=llm, ui=ui,
-            max_tokens=int(cfg["max_tokens"]), temperature=float(cfg["temperature"]),
-            max_steps=int(cfg["max_steps"]), system_prompt=system,
-            on_step=lambda r: emit("step", {"step": r["step"], "action": r["action"], "result": r["result"]}),
+        from .browser import BrowserUI
+
+        start = _start_url(goal, cfg)
+        br = BrowserUI(headless=headless or bool(cfg.get("headless")), start_url=start)
+        br.start()
+        emit("info", {"message": f"browser: {start}"})
+        emit(
+            "info",
+            {
+                "message": f"provider={cfg.get('provider')} model={cfg.get('model')}"
+            },
         )
-        emit("done", {"message": "Done." if steps and steps[-1]["action"].get("a") == "done" else "Stopped.", "steps": len(steps)})
+        steps = run_loop(
+            goal=goal,
+            llm=llm,
+            ui=br,
+            max_tokens=int(cfg["max_tokens"]),
+            temperature=float(cfg["temperature"]),
+            max_steps=int(cfg["max_steps"]),
+            system_prompt=SYSTEM_BROWSER,
+            on_step=lambda r: emit(
+                "step",
+                {"step": r["step"], "action": r["action"], "result": r["result"]},
+            ),
+        )
+        emit(
+            "done",
+            {
+                "message": "Done."
+                if steps and steps[-1]["action"].get("a") == "done"
+                else "Stopped.",
+                "steps": len(steps),
+            },
+        )
     except Exception as e:
         emit("error", {"message": str(e)})
     finally:
@@ -89,7 +128,12 @@ def _run(goal: str, mock: bool, browser: bool, headless: bool, config: str | Non
             br.close()
 
 
-def serve(host: str = "127.0.0.1", port: int = 8765, config_path: str | None = None, open_browser: bool = True) -> None:
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    config_path: str | None = None,
+    open_browser: bool = True,
+) -> None:
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_a):
             return
@@ -104,10 +148,42 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config_path: str | None = N
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if path == "/api/config":
+                cfg = load_config(config_path)
+                body = json.dumps(
+                    {
+                        "provider": cfg.get("provider", "gemini"),
+                        "model": cfg.get("model", ""),
+                        "has_api_key": bool(str(cfg.get("api_key") or "").strip()),
+                        # never send the raw key to the page after first save — blank means keep
+                        "api_key_hint": "••••••" if str(cfg.get("api_key") or "").strip() else "",
+                    }
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if path == "/api/models":
                 cfg = load_config(config_path)
-                models = list_ollama_models(str(cfg.get("base_url", "")))
-                body = json.dumps({"models": models, "current": cfg.get("model", "")}).encode()
+                provider = str(cfg.get("provider", "gemini")).lower()
+                if provider in {"ollama", "local"}:
+                    models = list_ollama_models(
+                        str(cfg.get("ollama_base_url") or cfg.get("base_url") or "")
+                    )
+                else:
+                    models = list(GEMINI_MODELS)
+                    cur = str(cfg.get("model") or "")
+                    if cur and cur not in models:
+                        models = [cur] + models
+                body = json.dumps(
+                    {
+                        "models": models,
+                        "current": cfg.get("model", ""),
+                        "provider": provider,
+                    }
+                ).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -117,14 +193,44 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config_path: str | None = N
             self.send_error(404)
 
         def do_POST(self):  # noqa: N802
-            if urlparse(self.path).path != "/api/run":
-                self.send_error(404)
-                return
+            path = urlparse(self.path).path
             n = int(self.headers.get("Content-Length", 0))
             try:
                 p = json.loads(self.rfile.read(n) or b"{}")
             except json.JSONDecodeError:
                 self.send_error(400)
+                return
+
+            if path == "/api/save-key":
+                try:
+                    updates: dict[str, str] = {}
+                    if p.get("provider"):
+                        updates["provider"] = str(p["provider"])
+                    if p.get("model"):
+                        updates["model"] = str(p["model"])
+                    key = p.get("api_key")
+                    if key is not None and str(key).strip() != "":
+                        updates["api_key"] = str(key).strip()
+                    if updates:
+                        set_keys(updates)
+                except Exception as e:
+                    body = json.dumps({"ok": False, "error": str(e)}).encode()
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                body = b'{"ok":true}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if path != "/api/run":
+                self.send_error(404)
                 return
             goal = str(p.get("goal") or "").strip()
             if not goal:
@@ -142,10 +248,17 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config_path: str | None = N
                 except BrokenPipeError:
                     pass
 
+            api_key = p.get("api_key")
+            if api_key == "" or api_key is None:
+                api_key = None  # keep config.txt value
             _run(
-                goal, bool(p.get("mock", True)), bool(p.get("browser", False)),
-                bool(p.get("headless", False)), config_path,
-                str(p["model"]) if p.get("model") else None, emit,
+                goal,
+                bool(p.get("headless", False)),
+                config_path,
+                str(p["model"]) if p.get("model") else None,
+                str(p["provider"]) if p.get("provider") else None,
+                str(api_key) if api_key is not None else None,
+                emit,
             )
 
     httpd = ThreadingHTTPServer((host, port), H)

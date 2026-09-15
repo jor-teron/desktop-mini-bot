@@ -1,4 +1,4 @@
-"""Load plain-text config.txt (key=value)."""
+"""Load/save plain-text config.txt (key=value)."""
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ from typing import Any
 from .paths import config_path, ensure_config
 
 DEFAULTS: dict[str, Any] = {
-    "base_url": "http://127.0.0.1:11434/v1",
-    "api_key": "ollama",
-    "model": "hammer2.0:1.5b",
-    "max_tokens": 80,
+    "provider": "gemini",
+    "api_key": "",
+    "model": "gemini-3.5-flash-lite",
+    "ollama_base_url": "http://127.0.0.1:11434/v1",
+    "ollama_api_key": "ollama",
+    "max_tokens": 120,
     "temperature": 0.1,
-    "max_steps": 12,
-    "dry_run": True,
+    "max_steps": 20,
     "headless": False,
     "start_url": "about:blank",
 }
@@ -26,7 +27,7 @@ def _parse_value(key: str, raw: str) -> Any:
     v = raw.strip()
     if key in {"max_tokens", "max_steps"}:
         return int(v)
-    if key in {"temperature"}:
+    if key == "temperature":
         return float(v)
     if key in {"headless", "dry_run"}:
         return v.lower() in _BOOL
@@ -38,43 +39,52 @@ def load_txt(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return out
     for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
             continue
-        k, _, val = line.partition("=")
-        k, val = k.strip(), val.strip()
+        k, _, val = s.partition("=")
+        k = k.strip()
         if k:
             out[k] = _parse_value(k, val)
     return out
 
 
-def save_model(model: str, path: Path | None = None) -> None:
-    """Update model= in config.txt, keeping other lines."""
-    p = path or config_path()
-    ensure_config()
+def set_keys(updates: dict[str, str], path: Path | None = None) -> None:
+    """Update keys in config.txt, preserving comments/order."""
+    p = path or ensure_config()
     lines = p.read_text(encoding="utf-8").splitlines()
-    found = False
-    new_lines = []
+    done = set()
+    new_lines: list[str] = []
     for line in lines:
-        if line.strip().startswith("model=") or line.strip().startswith("model ="):
-            new_lines.append(f"model={model}")
-            found = True
-        else:
-            new_lines.append(line)
-    if not found:
-        new_lines.append(f"model={model}")
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k = stripped.split("=", 1)[0].strip()
+            if k in updates:
+                new_lines.append(f"{k}={updates[k]}")
+                done.add(k)
+                continue
+        new_lines.append(line)
+    for k, v in updates.items():
+        if k not in done:
+            new_lines.append(f"{k}={v}")
     p.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+def save_model(model: str, path: Path | None = None) -> None:
+    set_keys({"model": model}, path)
+
+
+def save_api_key(api_key: str, path: Path | None = None) -> None:
+    set_keys({"api_key": api_key}, path)
 
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     cfg = dict(DEFAULTS)
     p = Path(path) if path else ensure_config()
-    # allow legacy .json only if explicitly passed
-    if p.suffix == ".json":
-        import json
-        data = json.loads(p.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            cfg.update({k: v for k, v in data.items() if v not in ("", None)})
-        return cfg
     cfg.update(load_txt(p))
+    # legacy aliases
+    if cfg.get("base_url") and not path:
+        pass
+    if "base_url" in cfg and "ollama_base_url" not in load_txt(p):
+        cfg["ollama_base_url"] = cfg.get("base_url") or cfg["ollama_base_url"]
     return cfg

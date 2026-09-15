@@ -1,11 +1,20 @@
-# desktop-mini-bot config (plain text, key=value)
-# Copy to config.txt or edit this after install creates config.txt
+# desktop-mini-bot — plain text config (copy to config.txt)
 
-base_url=http://127.0.0.1:11434/v1
-api_key=ollama
-model=hammer2.0:1.5b
-max_tokens=80
+# provider: gemini (online, default) | ollama (local)
+provider=gemini
+
+# Google AI Studio / Gemini API key (saved here — do not commit config.txt)
+api_key=
+
+# Default online model
+model=gemini-3.5-flash-lite
+
+# Only used when provider=ollama
+ollama_base_url=http://127.0.0.1:11434/v1
+ollama_api_key=ollama
+
+max_tokens=120
 temperature=0.1
-max_steps=12
+max_steps=20
 headless=false
 start_url=about:blank
