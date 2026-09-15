@@ -110,14 +110,15 @@ install_browser() {
   info "Installing Playwright (browser hands)…"
   need_python
   local venv="$ROOT/.venv"
-  if [[ ! -d "$venv" ]]; then
-    python3 -m venv "$venv" || die "python3 -m venv failed (try: sudo apt install python3-venv)"
+  # Recreate if missing or broken (empty dir / no python).
+  if [[ ! -x "$venv/bin/python" ]]; then
+    rm -rf "$venv"
+    python3 -m venv "$venv" || die "python3 -m venv failed (try: sudo apt install python3-venv python3-full)"
   fi
-  # shellcheck disable=SC1091
-  source "$venv/bin/activate"
-  python -m pip install -U pip >/dev/null
-  python -m pip install -U "playwright>=1.40" || die "pip install playwright failed"
-  python -m playwright install chromium || die "playwright install chromium failed"
+  [[ -x "$venv/bin/python" ]] || die "venv has no python at $venv/bin/python"
+  "$venv/bin/python" -m pip install -U pip >/dev/null
+  "$venv/bin/python" -m pip install -U "playwright>=1.40" || die "pip install playwright failed"
+  "$venv/bin/python" -m playwright install chromium || die "playwright install chromium failed"
   ok "Playwright Chromium ready in $venv"
   # Prefer venv python from the launcher when present.
   cat > "$BIN_DIR/desktop-mini-bot" << LAUNCH
