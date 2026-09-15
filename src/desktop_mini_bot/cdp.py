@@ -1,0 +1,163 @@
+"""Minimal Chromium CDP client — stdlib only (no pip)."""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import socket
+import ssl
+import struct
+import subprocess
+import time
+import urllib.request
+from typing import Any
+from urllib.parse import urlparse
+
+
+class CdpError(RuntimeError):
+    pass
+
+
+def _ws_connect(url: str, timeout: float = 10.0) -> socket.socket:
+    u = urlparse(url)
+    host, port = u.hostname or "127.0.0.1", u.port or (443 if u.scheme == "wss" else 80)
+    path = u.path or "/"
+    if u.query:
+        path += "?" + u.query
+    raw = socket.create_connection((host, port), timeout=timeout)
+    sock: socket.socket = ssl.create_default_context().wrap_socket(raw, server_hostname=host) if u.scheme == "wss" else raw
+    key = base64.b64encode(os.urandom(16)).decode()
+    sock.sendall(
+        f"GET {path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode()
+    )
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise CdpError("CDP websocket handshake failed")
+        buf += chunk
+    if b"101" not in buf.split(b"\r\n", 1)[0]:
+        raise CdpError(f"CDP handshake rejected: {buf[:200]!r}")
+    return sock
+
+
+def _ws_send(sock: socket.socket, data: bytes) -> None:
+    # Client frames must be masked
+    mask = os.urandom(4)
+    ln = len(data)
+    hdr = bytearray([0x81])
+    if ln < 126:
+        hdr.append(0x80 | ln)
+    elif ln < 65536:
+        hdr.append(0x80 | 126)
+        hdr.extend(struct.pack("!H", ln))
+    else:
+        hdr.append(0x80 | 127)
+        hdr.extend(struct.pack("!Q", ln))
+    hdr.extend(mask)
+    sock.sendall(bytes(hdr) + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+
+def _ws_recv(sock: socket.socket) -> bytes:
+    def read(n: int) -> bytes:
+        out = b""
+        while len(out) < n:
+            chunk = sock.recv(n - len(out))
+            if not chunk:
+                raise CdpError("CDP socket closed")
+            out += chunk
+        return out
+
+    b1, b2 = read(2)
+    masked = b2 & 0x80
+    ln = b2 & 0x7F
+    if ln == 126:
+        ln = struct.unpack("!H", read(2))[0]
+    elif ln == 127:
+        ln = struct.unpack("!Q", read(8))[0]
+    mask = read(4) if masked else b""
+    payload = read(ln)
+    if masked:
+        payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+    opcode = b1 & 0x0F
+    if opcode == 0x8:
+        raise CdpError("CDP websocket closed")
+    if opcode == 0x9:  # ping -> pong
+        _ws_send(sock, payload)  # simplistic
+        return _ws_recv(sock)
+    return payload
+
+
+class Cdp:
+    def __init__(self, ws_url: str) -> None:
+        self._sock = _ws_connect(ws_url)
+        self._id = 0
+
+    def close(self) -> None:
+        try:
+            self._sock.close()
+        except Exception:
+            pass
+
+    def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        self._id += 1
+        msg_id = self._id
+        _ws_send(self._sock, json.dumps({"id": msg_id, "method": method, "params": params or {}}).encode())
+        while True:
+            data = json.loads(_ws_recv(self._sock).decode())
+            if data.get("id") == msg_id:
+                if "error" in data:
+                    raise CdpError(str(data["error"]))
+                return data.get("result")
+
+
+def find_chromium() -> str:
+    for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome"):
+        from shutil import which
+        p = which(name)
+        if p:
+            return p
+    raise CdpError("No Chromium/Chrome found (sudo apt install chromium)")
+
+
+def launch_chromium(port: int = 9222, headless: bool = False, url: str = "about:blank") -> subprocess.Popen:
+    bin_path = find_chromium()
+    profile = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "desktop-mini-bot-chrome")
+    os.makedirs(profile, exist_ok=True)
+    args = [
+        bin_path,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-background-networking",
+    ]
+    if headless:
+        args += ["--headless=new", "--disable-gpu"]
+    args.append(url)
+    return subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def wait_ws_url(port: int = 9222, timeout: float = 15.0) -> str:
+    """Return a *page* target websocket (not the browser-level one)."""
+    deadline = time.time() + timeout
+    list_url = f"http://127.0.0.1:{port}/json/list"
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(list_url, timeout=1) as r:
+                tabs = json.loads(r.read().decode())
+            for tab in tabs:
+                if tab.get("type") == "page" and tab.get("webSocketDebuggerUrl"):
+                    return tab["webSocketDebuggerUrl"]
+            # No page yet — open one
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/json/new?about:blank", timeout=1).read()
+            except Exception:
+                pass
+        except Exception:
+            time.sleep(0.2)
+            continue
+        time.sleep(0.2)
+    raise CdpError(f"Chromium page CDP not up on :{port}")

@@ -1,97 +1,86 @@
-"""Playwright DOM browser surface — no screenshots."""
+"""Browser hands via system Chromium CDP — no pip / Playwright."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
-
-class BrowserError(RuntimeError):
-    pass
+from .cdp import Cdp, CdpError, launch_chromium, wait_ws_url
 
 
-def _require_playwright():
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as e:
-        raise BrowserError(
-            "Playwright not installed. Run: ./install.sh --browser"
-        ) from e
-    return sync_playwright
-
-
-def _looks_like_url(name: str) -> bool:
+def _norm_url(name: str) -> str:
     n = name.strip()
-    if n.startswith(("http://", "https://", "file://")):
-        return True
-    if "." in n and " " not in n and not n.startswith("."):
-        return True
-    return False
-
-
-def _normalize_url(name: str) -> str:
-    n = name.strip()
-    if n.startswith(("http://", "https://", "file://")):
+    if n.startswith(("http://", "https://", "file://", "about:")):
         return n
     return "https://" + n
 
 
+def _looks_url(name: str) -> bool:
+    n = name.strip()
+    return n.startswith(("http://", "https://", "file://")) or ("." in n and " " not in n)
+
+
 @dataclass
 class BrowserUI:
-    """Real Chromium page driven by accessibility/DOM — never screenshots."""
-
     headless: bool = False
     start_url: str = "about:blank"
-    _pw: Any = field(default=None, repr=False)
-    _browser: Any = field(default=None, repr=False)
-    _page: Any = field(default=None, repr=False)
-    _refs: dict[str, Any] = field(default_factory=dict, repr=False)
+    port: int = 9222
+    _proc: Any = field(default=None, repr=False)
+    _cdp: Cdp | None = field(default=None, repr=False)
     _elements: list[dict[str, str]] = field(default_factory=list)
     _last_hits: list[str] = field(default_factory=list)
     log: list[str] = field(default_factory=list)
 
     def start(self) -> None:
-        sync_playwright = _require_playwright()
-        self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=self.headless)
-        self._page = self._browser.new_page()
-        self._page.goto(self.start_url, wait_until="domcontentloaded")
-        self._refresh_elements()
+        self._proc = launch_chromium(self.port, self.headless, self.start_url)
+        self._cdp = Cdp(wait_ws_url(self.port))
+        self._cdp.call("Runtime.enable")
+        self._cdp.call("Page.enable")
+        self._refresh()
 
     def close(self) -> None:
-        try:
-            if self._browser is not None:
-                self._browser.close()
-        finally:
-            self._browser = None
-            self._page = None
-            if self._pw is not None:
-                self._pw.stop()
-                self._pw = None
+        if self._cdp:
+            self._cdp.close()
+            self._cdp = None
+        if self._proc and self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=3)
+            except Exception:
+                self._proc.kill()
+        self._proc = None
 
     def __enter__(self) -> "BrowserUI":
         self.start()
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *a: Any) -> None:
         self.close()
 
-    def _refresh_elements(self) -> None:
-        assert self._page is not None
-        # Prefer role-based accessible nodes; fall back to common controls.
-        script = """
-() => {
+    def _eval(self, expr: str) -> Any:
+        assert self._cdp
+        r = self._cdp.call("Runtime.evaluate", {"expression": expr, "returnByValue": True, "awaitPromise": True})
+        if r.get("exceptionDetails"):
+            raise CdpError(str(r["exceptionDetails"]))
+        return (r.get("result") or {}).get("value")
+
+    def _refresh(self) -> None:
+        script = r"""
+(() => {
   const out = [];
-  const push = (el, role, name) => {
+  const add = (el, role) => {
     if (!el || out.length >= 40) return;
-    const r = role || el.getAttribute('role') || el.tagName.toLowerCase();
-    let n = (name || el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('placeholder') || el.getAttribute('name') || '').trim();
-    n = n.replace(/\\s+/g, ' ').slice(0, 60);
-    if (!n && r !== 'textbox' && r !== 'searchbox') return;
-    out.push({role: r, name: n || r, tag: el.tagName.toLowerCase()});
+    let n = (el.getAttribute('aria-label') || el.innerText || el.value ||
+             el.getAttribute('placeholder') || el.getAttribute('name') || '').trim()
+             .replace(/\s+/g, ' ').slice(0, 60);
+    if (!n && role !== 'textbox' && role !== 'searchbox') return;
+    const i = out.length;
+    el.setAttribute('data-dmb', String(i + 1));
+    out.push({ref: 'e' + (i + 1), role, name: n || role});
   };
-  document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [role="checkbox"], [role="menuitem"]').forEach(el => {
+  document.querySelectorAll('a[href],button,input,textarea,select,[role="button"],[role="link"],[role="textbox"]').forEach(el => {
     let role = el.getAttribute('role');
     if (!role) {
       const t = el.tagName.toLowerCase();
@@ -100,143 +89,82 @@ class BrowserUI:
       else if (t === 'textarea') role = 'textbox';
       else if (t === 'select') role = 'combobox';
       else if (t === 'input') {
-        const ty = (el.getAttribute('type') || 'text').toLowerCase();
-        if (ty === 'submit' || ty === 'button') role = 'button';
-        else if (ty === 'checkbox') role = 'checkbox';
-        else if (ty === 'radio') role = 'radio';
-        else if (ty === 'search') role = 'searchbox';
-        else role = 'textbox';
+        const ty = (el.type || 'text').toLowerCase();
+        role = ty === 'submit' || ty === 'button' ? 'button' : ty === 'checkbox' ? 'checkbox' : ty === 'search' ? 'searchbox' : 'textbox';
       } else role = t;
     }
-    push(el, role, null);
+    add(el, role);
   });
   return out;
-}
+})()
 """
-        raw = self._page.evaluate(script)
-        self._refs.clear()
-        self._elements = []
-        for i, item in enumerate(raw):
-            ref = f"e{i+1}"
-            # locator by role+name when possible
-            role = item.get("role") or "generic"
-            name = item.get("name") or ""
-            self._elements.append({"ref": ref, "role": role, "name": name})
-            try:
-                if name and role in {
-                    "button",
-                    "link",
-                    "textbox",
-                    "searchbox",
-                    "checkbox",
-                    "radio",
-                    "menuitem",
-                    "combobox",
-                }:
-                    loc = self._page.get_by_role(role, name=name)
-                elif role in {"textbox", "searchbox"}:
-                    loc = self._page.locator("input, textarea").nth(i)
-                else:
-                    loc = self._page.locator("a, button, input, textarea, select").nth(i)
-                self._refs[ref] = loc.first
-            except Exception:
-                continue
+        self._elements = list(self._eval(script) or [])
 
     def compact_state(self) -> str:
-        assert self._page is not None
-        title = ""
-        url = ""
         try:
-            title = (self._page.title() or "")[:40]
-            url = self._page.url or ""
-            host = urlparse(url).netloc or url[:40]
+            title = self._eval("document.title") or ""
+            url = self._eval("location.href") or ""
         except Exception:
-            host = "?"
-        parts = [f"win={title or host}", f"url={url[:80]}"]
+            title, url = "", ""
+        parts = [f"win={str(title)[:40]}", f"url={str(url)[:80]}"]
         for e in self._elements[:25]:
             parts.append(f"{e['ref']}:{e['role']}/{e['name']}")
         return " | ".join(parts)
 
-    def snapshot(self) -> dict[str, Any]:
-        return {
-            "url": self._page.url if self._page else "",
-            "elements": list(self._elements),
-        }
-
     def apply(self, action: dict[str, Any]) -> str:
-        assert self._page is not None
         a = action["action"]
         try:
-            if a == "launch_app":
-                name = str(action["name"])
-                if _looks_like_url(name) or name.lower() in {"browser", "chromium", "chrome"}:
-                    url = self.start_url if name.lower() in {"browser", "chromium", "chrome"} else _normalize_url(name)
-                    self._page.goto(url, wait_until="domcontentloaded")
-                    self._refresh_elements()
-                    msg = f"opened {self._page.url}"
+            if a in {"open_url", "launch_app"}:
+                raw = str(action.get("url") or action.get("name") or "")
+                if a == "launch_app" and raw.lower() in {"browser", "chromium", "chrome"}:
+                    url = self.start_url
+                elif _looks_url(raw) or a == "open_url":
+                    url = _norm_url(raw)
                 else:
-                    msg = f"launch_app ignored for non-URL '{name}' (browser mode)"
-            elif a == "open_url":
-                url = str(action["url"])
-                if not url.startswith(("http://", "https://", "file://", "about:")):
-                    url = "https://" + url
-                self._page.goto(url, wait_until="domcontentloaded")
-                self._refresh_elements()
-                msg = f"opened {self._page.url}"
+                    return f"launch_app ignored for non-URL '{raw}' (browser mode)"
+                self._eval(f"location.href = {json.dumps(url)}")
+                # crude wait
+                import time
+                time.sleep(0.6)
+                self._refresh()
+                msg = f"opened {self._eval('location.href')}"
             elif a == "focus_window":
                 msg = f"focus_window no-op in browser ({action.get('title')})"
             elif a == "find":
-                role, name = str(action["role"]), str(action["name"])
-                self._refresh_elements()
-                hits = [
-                    e["ref"]
-                    for e in self._elements
-                    if e["role"] == role and name.lower() in (e["name"] or "").lower()
-                ]
+                role, name = str(action["role"]), str(action["name"]).lower()
+                self._refresh()
+                hits = [e["ref"] for e in self._elements if e["role"] == role and name in (e["name"] or "").lower()]
                 self._last_hits = hits
                 msg = f"find ok {hits}" if hits else f"find miss {role}/{name}"
             elif a == "click":
                 ref = str(action["ref"])
                 if ref in {"hit", "hit1", "first"} and self._last_hits:
                     ref = self._last_hits[0]
-                loc = self._refs.get(ref)
-                if loc is None:
-                    self._refresh_elements()
-                    loc = self._refs.get(ref)
-                if loc is None and self._last_hits:
-                    loc = self._refs.get(self._last_hits[0])
+                if ref not in {e["ref"] for e in self._elements} and self._last_hits:
                     ref = self._last_hits[0]
-                if loc is None:
-                    # Last resort: role-name from action history not available; try Save button
-                    try:
-                        self._page.get_by_role("button", name="Save").click(timeout=5000)
-                        self._page.wait_for_load_state("domcontentloaded")
-                        self._refresh_elements()
-                        msg = "clicked Save (fallback)"
-                    except Exception:
-                        msg = f"click miss {ref}"
-                else:
-                    loc.click(timeout=5000)
-                    self._page.wait_for_load_state("domcontentloaded")
-                    self._refresh_elements()
-                    msg = f"clicked {ref}"
+                n = ref[1:] if ref.startswith("e") else ref
+                ok = self._eval(
+                    f"""(() => {{ const el = document.querySelector('[data-dmb="{n}"]');
+                    if (!el) return false; el.click(); return true; }})()"""
+                )
+                import time
+                time.sleep(0.3)
+                self._refresh()
+                msg = f"clicked {ref}" if ok else f"click miss {ref}"
             elif a == "type":
                 text = str(action["text"])
                 ref = action.get("ref")
                 if ref:
-                    loc = self._refs.get(str(ref))
-                    if loc is None:
-                        self._refresh_elements()
-                        loc = self._refs.get(str(ref))
-                    if loc is None:
-                        msg = f"type miss {ref}"
-                    else:
-                        loc.fill(text, timeout=5000)
-                        msg = f"typed into {ref}: {text!r}"
+                    n = str(ref)[1:] if str(ref).startswith("e") else str(ref)
+                    ok = self._eval(
+                        f"""(() => {{ const el = document.querySelector('[data-dmb="{n}"]');
+                        if (!el) return false; el.focus(); el.value = {json.dumps(text)};
+                        el.dispatchEvent(new Event('input', {{bubbles:true}})); return true; }})()"""
+                    )
+                    msg = f"typed into {ref}: {text!r}" if ok else f"type miss {ref}"
                 else:
-                    self._page.keyboard.type(text)
-                    msg = f"typed {text!r}"
-                self._refresh_elements()
+                    msg = f"typed {text!r} (no ref)"
+                self._refresh()
             elif a == "done":
                 msg = f"done: {action.get('summary', '')}"
             else:
@@ -245,3 +173,7 @@ class BrowserUI:
             msg = f"error: {e}"
         self.log.append(msg)
         return msg
+
+
+# Back-compat name used by older messages
+BrowserError = CdpError

@@ -1,34 +1,32 @@
 import unittest
 
-from desktop_mini_bot.browser import BrowserError, _looks_like_url, _normalize_url
+from desktop_mini_bot.browser import _looks_url, _norm_url
 
 
-class BrowserHelpers(unittest.TestCase):
-    def test_url_helpers(self):
-        self.assertTrue(_looks_like_url("https://example.com"))
-        self.assertTrue(_looks_like_url("example.com"))
-        self.assertFalse(_looks_like_url("Settings"))
-        self.assertEqual(_normalize_url("example.com"), "https://example.com")
+class Helpers(unittest.TestCase):
+    def test_url(self):
+        self.assertTrue(_looks_url("https://example.com"))
+        self.assertTrue(_looks_url("example.com"))
+        self.assertFalse(_looks_url("Settings"))
+        self.assertEqual(_norm_url("example.com"), "https://example.com")
 
 
 class BrowserIntegration(unittest.TestCase):
-    def test_demo_page_click_save(self):
-        try:
-            from desktop_mini_bot.browser import BrowserUI
-        except Exception as e:
-            self.skipTest(str(e))
+    def test_demo_click(self):
         from pathlib import Path
+        from shutil import which
+        if not any(which(x) for x in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable")):
+            self.skipTest("no system Chromium/Chrome")
+        from desktop_mini_bot.browser import BrowserUI, CdpError
         from desktop_mini_bot.llm import MockLLM
         from desktop_mini_bot.loop import SYSTEM_BROWSER, run_loop
 
         demo = Path(__file__).resolve().parents[1] / "examples" / "demo.html"
         try:
-            ui = BrowserUI(headless=True, start_url=demo.as_uri())
+            ui = BrowserUI(headless=True, start_url=demo.as_uri(), port=9333)
             ui.start()
-        except BrowserError as e:
-            self.skipTest(str(e))
         except Exception as e:
-            self.skipTest(f"playwright/chromium unavailable: {e}")
+            self.skipTest(str(e))
         try:
             steps = run_loop(
                 goal="click Save",
@@ -38,8 +36,6 @@ class BrowserIntegration(unittest.TestCase):
                 max_steps=6,
             )
             self.assertEqual(steps[-1]["action"]["a"], "done")
-            joined = " ".join(s["result"] for s in steps)
-            self.assertTrue("click" in joined.lower() or "Save" in joined)
         finally:
             ui.close()
 

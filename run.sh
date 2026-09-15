@@ -6,9 +6,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="${DMB_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/desktop-mini-bot/config.json}"
 export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 PYTHON="python3"
-if [[ -x "$ROOT/.venv/bin/python" ]]; then
-  PYTHON="$ROOT/.venv/bin/python"
-fi
 
 usage() {
   cat <<USAGE

@@ -11,7 +11,7 @@ Most computer-use agents assume a fast cloud VLM and screenshots. This one does 
 | No screenshots | Fits weak CPUs; no vision model |
 | Short JSON actions | Usable at ~10 tok/s |
 | Plan small / execute locally | Model rarely called |
-| Stdlib core + optional Playwright | Tiny default footprint |
+| **Stdlib only** (no pip) | Lowest possible deps |
 | Local models only | Offline after one-time download |
 
 **Suggested brain:** Hammer 2.0 1.5B or MiniCPM5-1B via Ollama (`127.0.0.1`).
@@ -19,7 +19,7 @@ Most computer-use agents assume a fast cloud VLM and screenshots. This one does 
 ## Status — Phase 1
 
 - **Phase 0:** dry-run fake UI + mock/local LLM ✅
-- **Phase 1:** real Chromium via Playwright **DOM** (no screenshots) ✅
+- **Phase 1:** real Chromium via **CDP** (stdlib, no pip / no screenshots) ✅
 - **Phase 2:** nested Xephyr practice desk (next)
 - **Phase 3:** AT-SPI native apps
 - **Later:** gated `run_command`
@@ -30,22 +30,15 @@ Most computer-use agents assume a fast cloud VLM and screenshots. This one does 
 curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 ```
 
-This **solve-all** script will:
-1. Install missing system packages (git, python3, venv) via `apt` when needed  
-2. Clone or update `~/desktop-mini-bot`  
-3. Install the launcher + Playwright Chromium (browser hands)  
-4. Run a quick verify smoke test  
+**Dependencies:** Python 3.10+ **stdlib only** — **no pip**.  
+Optional browser hands: system **Chromium/Chrome** via `apt` (CDP).  
 
 ```bash
-# update later (same one-liner)
+# update
 curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash -s -- --update
-# or: desktop-mini-bot-update
 
-# agent only (no browser)
+# no browser package
 curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash -s -- --no-browser
-
-# also pull an Ollama model
-curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash -s -- --with-model
 ```
 
 ## Run
@@ -72,7 +65,6 @@ On your PC after we push updates:
 ```bash
 cd desktop-mini-bot
 git pull
-./install.sh --browser   # once, if you want real browser mode
 ```
 
 ## Action wire format
