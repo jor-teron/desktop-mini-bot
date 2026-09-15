@@ -23,7 +23,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="desktop-mini-bot",
         description="Lightweight no-vision Linux CUA (dry-run + browser DOM)",
     )
-    p.add_argument("--goal", required=True, help="What to accomplish")
+    p.add_argument("--ui", action="store_true", help="Tiny local chat page (127.0.0.1)")
+    p.add_argument("--port", type=int, default=8765, help="Chat UI port")
+    p.add_argument("--goal", required=False, help="What to accomplish")
     p.add_argument("--config", default=None, help="Path to JSON config")
     p.add_argument("--dry-run", action="store_true", help="Fake UI only (no browser)")
     p.add_argument("--browser", action="store_true", help="Control a real Chromium window via DOM")
@@ -33,6 +35,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--model", default=None, help="Override model id")
     p.add_argument("--base-url", default=None, help="Override OpenAI-compatible base URL")
     args = p.parse_args(argv)
+
+    if args.ui:
+        from .ui_server import serve
+        serve(port=args.port, config_path=args.config, open_browser=True)
+        return 0
+
+    if not args.goal:
+        p.error("--goal is required unless --ui")
 
     cfg = load_config(args.config)
     if args.model:

@@ -49,6 +49,9 @@ Menu:
 ## Run
 
 ```bash
+# Tiny local chat page (middle ground UI)
+./run.sh --ui
+
 # Terminal practice (fake desk)
 ./run.sh "click Save"
 

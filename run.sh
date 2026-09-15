@@ -18,6 +18,7 @@ Usage: ./run.sh [options] [--] [goal...]
   ./run.sh --browser --mock "click Save" Real Chromium window + mock brain
   ./run.sh --browser --local "click Save" Real browser + your local Ollama model
   ./run.sh --local "click Save"          Fake desk + local model
+  ./run.sh --ui                          Tiny local chat page in browser
 
 Options:
   --mock       Dummy brain (default)
@@ -25,6 +26,8 @@ Options:
   --browser    Drive a real browser (DOM, no screenshots)
   --headless   Browser with no visible window
   --url URL    Start URL (default: bundled examples/demo.html)
+  --ui         Open tiny local chat page
+  --port N     Chat UI port (default 8765)
   --config PATH
 
 Mock = dummy brain. Local = Ollama/llama.cpp on 127.0.0.1.
@@ -36,6 +39,8 @@ GOAL=""
 BROWSER=0
 HEADLESS=0
 URL=""
+UI=0
+PORT=8765
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -44,6 +49,10 @@ while [[ $# -gt 0 ]]; do
     --local) MODE="local"; shift ;;
     --browser) BROWSER=1; shift ;;
     --headless) HEADLESS=1; shift ;;
+    --ui) UI=1; shift ;;
+    --port)
+      [[ $# -ge 2 ]] || { echo "run.sh: --port needs a value" >&2; exit 1; }
+      PORT="$2"; shift 2 ;;
     --url)
       [[ $# -ge 2 ]] || { echo "run.sh: --url needs a value" >&2; exit 1; }
       URL="$2"; shift 2 ;;
@@ -62,6 +71,12 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$UI" -eq 1 ]]; then
+  ARGS=(--ui --port "$PORT")
+  [[ -f "$CONFIG" ]] && ARGS+=(--config "$CONFIG")
+  exec "$PYTHON" -m desktop_mini_bot "${ARGS[@]}"
+fi
 
 if [[ -z "$GOAL" ]]; then
   read -r -p "What should the bot try to do? " GOAL
