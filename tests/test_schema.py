@@ -16,6 +16,11 @@ class SchemaTests(unittest.TestCase):
         d = parse_action('{"a":"done","s":"ok"}')
         self.assertEqual(d["summary"], "ok")
 
+    def test_open_url(self):
+        a = parse_action('{"a":"open_url","u":"https://example.com"}')
+        self.assertEqual(a["url"], "https://example.com")
+        self.assertEqual(to_wire(a)["u"], "https://example.com")
+
     def test_fence_and_prose(self):
         a = parse_action('Sure.\n```json\n{"a":"type","txt":"hi","ref":"t1"}\n```\n')
         self.assertEqual(a["action"], "type")

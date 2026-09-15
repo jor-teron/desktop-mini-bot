@@ -8,6 +8,7 @@ from typing import Any
 # Wire keys are short on purpose.
 ACTION_KEYS = {
     "launch_app": ("name",),
+    "open_url": ("url",),
     "focus_window": ("title",),
     "find": ("role", "name"),
     "click": ("ref",),
@@ -18,6 +19,8 @@ ACTION_KEYS = {
 ALIASES = {
     "a": "action",
     "n": "name",
+    "u": "url",
+    "url": "url",
     "t": "title",
     "r": "role",
     "ref": "ref",
@@ -93,6 +96,8 @@ def to_wire(action: dict[str, Any]) -> dict[str, Any]:
     wire: dict[str, Any] = {"a": a}
     if a == "launch_app":
         wire["n"] = action["name"]
+    elif a == "open_url":
+        wire["u"] = action["url"]
     elif a == "focus_window":
         wire["t"] = action["title"]
     elif a == "find":

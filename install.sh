@@ -25,14 +25,19 @@ need_python() {
 }
 
 install_agent() {
-  info "Installing desktop-mini-bot (stdlib only — no pip packages)…"
+  info "Installing desktop-mini-bot launcher…"
   need_python
   mkdir -p "$BIN_DIR" "$CONFIG_DIR"
 
   # Editable layout via a tiny launcher (avoids requiring pip/setuptools).
   cat > "$BIN_DIR/desktop-mini-bot" << LAUNCH
 #!/usr/bin/env bash
-export PYTHONPATH="$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
+ROOT="$ROOT"
+if [[ -x "\$ROOT/.venv/bin/python" ]]; then
+  export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
+  exec "\$ROOT/.venv/bin/python" -m desktop_mini_bot "\$@"
+fi
+export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
 exec python3 -m desktop_mini_bot "\$@"
 LAUNCH
   chmod +x "$BIN_DIR/desktop-mini-bot"
@@ -69,7 +74,7 @@ install_ollama_hint() {
   fi
 
   # Prefer a small tool-call model; user can change in config.
-  local model="${DMB_MODEL:-hammer2.1:1.5b}"
+  local model="${DMB_MODEL:-hammer2.0:1.5b}"
   info "Pulling model '$model' (one-time download; then offline)…"
   if ollama pull "$model"; then
     ok "Model ready: $model"
@@ -100,11 +105,42 @@ PY
   info "Run agent:  desktop-mini-bot --config $CONFIG_FILE --goal \"click Save\""
 }
 
+
+install_browser() {
+  info "Installing Playwright (browser hands)…"
+  need_python
+  local venv="$ROOT/.venv"
+  if [[ ! -d "$venv" ]]; then
+    python3 -m venv "$venv" || die "python3 -m venv failed (try: sudo apt install python3-venv)"
+  fi
+  # shellcheck disable=SC1091
+  source "$venv/bin/activate"
+  python -m pip install -U pip >/dev/null
+  python -m pip install -U "playwright>=1.40" || die "pip install playwright failed"
+  python -m playwright install chromium || die "playwright install chromium failed"
+  ok "Playwright Chromium ready in $venv"
+  # Prefer venv python from the launcher when present.
+  cat > "$BIN_DIR/desktop-mini-bot" << LAUNCH
+#!/usr/bin/env bash
+ROOT="$ROOT"
+if [[ -x "\$ROOT/.venv/bin/python" ]]; then
+  export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
+  exec "\$ROOT/.venv/bin/python" -m desktop_mini_bot "\$@"
+fi
+export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
+exec python3 -m desktop_mini_bot "\$@"
+LAUNCH
+  chmod +x "$BIN_DIR/desktop-mini-bot"
+  info "Try:  ./run.sh --browser --mock \"click Save\""
+}
+
 smoke_test() {
   need_python
-  ( cd "$ROOT" && PYTHONPATH=src python3 -m unittest discover -s tests -q )
+  local py=python3
+  [[ -x "$ROOT/.venv/bin/python" ]] && py="$ROOT/.venv/bin/python"
+  ( cd "$ROOT" && PYTHONPATH=src "$py" -m unittest discover -s tests -q )
   ok "Tests passed"
-  ( cd "$ROOT" && PYTHONPATH=src python3 -m desktop_mini_bot --mock-llm --goal "click Save" )
+  ( cd "$ROOT" && PYTHONPATH=src "$py" -m desktop_mini_bot --mock-llm --goal "click Save" )
 }
 
 usage() {
@@ -113,13 +149,14 @@ Usage: ./install.sh [option]
 
   (no args)     Interactive menu
   --agent       Install agent launcher + config only (fully offline)
+  --browser     Install Playwright + Chromium (needed for real browser)
   --with-model  Agent + help install/pull local Ollama model
   --test        Run unit tests + mock-llm smoke demo
   --help        Show this help
 
 Env:
   PREFIX=$PREFIX     install bin here
-  DMB_MODEL=...      model tag for ollama pull (default hammer2.1:1.5b)
+  DMB_MODEL=...      model tag for ollama pull (default hammer2.0:1.5b)
 
 Everything talks to 127.0.0.1 — no cloud API. Model download is the only
 step that needs network, and only once.
@@ -130,19 +167,21 @@ menu() {
   cat <<MENU
 
 desktop-mini-bot installer
-  1) Agent only          (offline — no model download)
-  2) Agent + local model (Ollama; one-time download)
-  3) Run tests / smoke
-  4) Quit
+  1) Agent only              (offline — no model download)
+  2) Agent + browser hands   (Playwright / Chromium)
+  3) Agent + local model     (Ollama; one-time download)
+  4) Run tests / smoke
+  5) Quit
 
 MENU
   local choice
-  read -r -p "Choose [1-4]: " choice
+  read -r -p "Choose [1-5]: " choice
   case "$choice" in
     1) install_agent ;;
-    2) install_agent; install_ollama_hint ;;
-    3) smoke_test ;;
-    4) exit 0 ;;
+    2) install_agent; install_browser ;;
+    3) install_agent; install_ollama_hint ;;
+    4) smoke_test ;;
+    5) exit 0 ;;
     *) die "Invalid choice" ;;
   esac
 }
@@ -151,6 +190,7 @@ main() {
   case "${1:-}" in
     "" ) menu ;;
     --agent) install_agent ;;
+    --browser) install_agent; install_browser ;;
     --with-model) install_agent; install_ollama_hint ;;
     --test) smoke_test ;;
     -h|--help) usage ;;

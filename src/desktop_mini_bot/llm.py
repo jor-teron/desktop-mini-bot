@@ -50,9 +50,15 @@ class HttpLLM:
 class MockLLM:
     """Scripted actions so demos/tests work offline."""
 
-    def __init__(self, goal: str = "") -> None:
+    def __init__(self, goal: str = "", *, browser: bool = False) -> None:
         g = goal.lower()
-        if "settings" in g:
+        if browser or "http://" in g or "https://" in g or "example.com" in g or "demo" in g:
+            seq = [
+                '{"a":"find","r":"button","n":"Save"}',
+                '{"a":"click","ref":"hit1"}',
+                '{"a":"done","s":"Clicked Save in browser"}',
+            ]
+        elif "settings" in g:
             seq = [
                 '{"a":"launch_app","n":"Settings"}',
                 '{"a":"find","r":"button","n":"Save"}',
@@ -77,7 +83,6 @@ class MockLLM:
     def complete(self, messages: list[dict[str, str]], *, max_tokens: int, temperature: float) -> str:
         if self._i >= len(self._seq):
             return '{"a":"done","s":"no more mock steps"}'
-        # If last user message looks like a repair, still advance.
         out = self._seq[self._i]
         self._i += 1
         return out

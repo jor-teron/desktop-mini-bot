@@ -56,6 +56,10 @@ class FakeUI:
                 self.apps.append(name)
             self.focused = name
             msg = f"launched {name}"
+        elif a == "open_url":
+            url = str(action["url"])
+            self.focused = url
+            msg = f"opened {url}"
         elif a == "focus_window":
             title = str(action["title"])
             self.focused = title

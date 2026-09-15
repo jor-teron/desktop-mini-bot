@@ -4,14 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "desktop-mini-bot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight no-vision Linux desktop CUA for low-RAM machines and ~10 tok/s local models"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "jor-teron" }]
-# Intentionally empty — stdlib only for the agent core.
+# Core stays empty. Browser mode needs: pip install 'desktop-mini-bot[browser]'
 dependencies = []
+
+[project.optional-dependencies]
+browser = ["playwright>=1.40"]
 
 [project.scripts]
 desktop-mini-bot = "desktop_mini_bot.__main__:main"

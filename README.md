@@ -11,22 +11,18 @@ Most computer-use agents assume a fast cloud VLM and screenshots. This one does 
 | No screenshots | Fits weak CPUs; no vision model |
 | Short JSON actions | Usable at ~10 tok/s |
 | Plan small / execute locally | Model rarely called |
-| Stdlib-only core | Tiny dependency surface |
-| Dry-run first | Prove the loop before real clicks |
+| Stdlib core + optional Playwright | Tiny default footprint |
+| Local models only | Offline after one-time download |
 
-**Default brain:** 1B-class tool-calling model (e.g. Hammer2.1-1.5b via Ollama).
+**Suggested brain:** Hammer 2.0 1.5B or MiniCPM5-1B via Ollama (`127.0.0.1`).
 
-## Status — Phase 0
+## Status — Phase 1
 
-Dry-run agent loop with a fake UI. No real desktop control yet.
-
-Roadmap:
-
-1. **Phase 0** — dry-run + schema + local LLM HTTP *(this repo)*
-2. **Phase 1** — Playwright DOM (still no screenshots)
-3. **Phase 2** — nested Xephyr “practice desk” sandbox
-4. **Phase 3** — AT-SPI for native Linux apps
-5. **Later** — gated `run_command` (allowlisted shell)
+- **Phase 0:** dry-run fake UI + mock/local LLM ✅
+- **Phase 1:** real Chromium via Playwright **DOM** (no screenshots) ✅
+- **Phase 2:** nested Xephyr practice desk (next)
+- **Phase 3:** AT-SPI native apps
+- **Later:** gated `run_command`
 
 ## Install
 
@@ -36,79 +32,67 @@ cd desktop-mini-bot
 ./install.sh
 ```
 
-Menu options:
+Menu:
 
-1. **Agent only** — offline, no downloads (launcher + config)
-2. **Agent + local model** — sets up Ollama pull (one-time network, then offline)
-3. **Tests / smoke** — unittest + `--mock-llm` demo
-
-Non-interactive:
+1. Agent only (offline)
+2. Agent + **browser hands** (Playwright / Chromium)
+3. Agent + local model (Ollama)
+4. Tests
 
 ```bash
-./install.sh --agent        # offline
-./install.sh --with-model   # agent + ollama model helper
+./install.sh --agent
+./install.sh --browser
+./install.sh --with-model
 ./install.sh --test
-```
-
-After install:
-
-```bash
-desktop-mini-bot --mock-llm --goal "click Save"
-desktop-mini-bot --config ~/.config/desktop-mini-bot/config.json --goal "click Save"
 ```
 
 ## Run
 
 ```bash
-./run.sh                     # asks for a goal (mock / practice)
-./run.sh "click Save"        # offline mock brain
-./run.sh --local "click Save"  # local model via ~/.config/desktop-mini-bot/config.json
+# Terminal practice (fake desk)
+./run.sh "click Save"
+
+# Real browser window you can watch (mock brain)
+./run.sh --browser --mock "click Save"
+
+# Real browser + your local Ollama model
+./run.sh --browser --local "click Save"
+
+# Headless browser
+./run.sh --browser --headless --mock "click Save"
 ```
 
-Mock = practice dummy. Local = your Ollama (or other) model on 127.0.0.1.
-
-## Quick start (no install)
-
+On your PC after we push updates:
 
 ```bash
-# offline demo (no model server)
-PYTHONPATH=src python3 -m desktop_mini_bot --mock-llm --goal "click Save"
-
-# with local Ollama (example)
-cp config.example.json config.json
-PYTHONPATH=src python3 -m desktop_mini_bot --config config.json --goal "Open settings and click Save"
-```
-
-Tests:
-
-```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-# or: ./install.sh --test
+cd desktop-mini-bot
+git pull
+./install.sh --browser   # once, if you want real browser mode
 ```
 
 ## Action wire format
 
-Short keys keep generation cheap:
-
 ```json
+{"a":"open_url","u":"https://example.com"}
 {"a":"find","r":"button","n":"Save"}
-{"a":"click","ref":"b1"}
-{"a":"type","txt":"hello","ref":"t1"}
+{"a":"click","ref":"e1"}
+{"a":"type","txt":"hello","ref":"e3"}
 {"a":"done","s":"Finished"}
 ```
 
 | `a` | fields |
 |-----|--------|
-| `launch_app` | `n` name |
-| `focus_window` | `t` title |
+| `launch_app` | `n` name or URL |
+| `open_url` | `u` url |
+| `focus_window` | `t` title (dry-run) |
 | `find` | `r` role, `n` name |
-| `click` | `ref` |
+| `click` | `ref` (or `hit1` after find) |
 | `type` | `txt`, optional `ref` |
 | `done` | `s` summary |
 
 ## Config
 
-See `config.example.json`. Point `base_url` at any OpenAI-compatible server (Ollama, llama.cpp, vLLM).
+See `config.example.json`. Point `model` at whatever you have locally, e.g. `hammer2.0:1.5b`.
 
 ## License
 

@@ -10,11 +10,13 @@ from typing import Any
 DEFAULTS: dict[str, Any] = {
     "base_url": "http://127.0.0.1:11434/v1",
     "api_key": "ollama",
-    "model": "hammer2.1:1.5b",
+    "model": "hammer2.0:1.5b",
     "max_tokens": 80,
     "temperature": 0.1,
     "max_steps": 12,
     "dry_run": True,
+    "headless": False,
+    "start_url": "",
 }
 
 
