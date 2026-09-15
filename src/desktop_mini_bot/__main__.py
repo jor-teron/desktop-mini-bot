@@ -5,80 +5,90 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from .config import load_config
 from .fake_ui import FakeUI
-from .llm import HttpLLM, MockLLM
+from .llm import HttpLLM, MockLLM, guess_url
 from .loop import SYSTEM_BROWSER, run_loop
+from .paths import config_path, ensure_config, project_root
 
 
 def _demo_url() -> str:
-    demo = Path(__file__).resolve().parents[2] / "examples" / "demo.html"
-    return demo.as_uri()
+    return (project_root() / "examples" / "demo.html").as_uri()
+
+
+def _start_url(args, cfg, goal: str) -> str:
+    if args.url:
+        return args.url
+    guessed = guess_url(goal)
+    if guessed:
+        return guessed
+    configured = (cfg.get("start_url") or "").strip()
+    if configured and configured not in {"demo", "about:blank"}:
+        return configured
+    g = goal.lower()
+    if any(w in g for w in ("save", "demo", "settings")) and "http" not in g:
+        return _demo_url()
+    return configured or "about:blank"
 
 
 def main(argv: list[str] | None = None) -> int:
+    ensure_config()
     p = argparse.ArgumentParser(
         prog="desktop-mini-bot",
-        description="Lightweight no-vision Linux CUA (dry-run + browser DOM)",
+        description="Lightweight no-vision Linux CUA (project-local config)",
     )
     p.add_argument("--ui", action="store_true", help="Tiny local chat page (127.0.0.1)")
     p.add_argument("--port", type=int, default=8765, help="Chat UI port")
     p.add_argument("--goal", required=False, help="What to accomplish")
-    p.add_argument("--config", default=None, help="Path to JSON config")
+    p.add_argument("--config", default=None, help=f"Config JSON (default: {config_path()})")
     p.add_argument("--dry-run", action="store_true", help="Fake UI only (no browser)")
-    p.add_argument("--browser", action="store_true", help="Control a real Chromium window via DOM")
+    p.add_argument("--browser", action="store_true", help="Control real Chromium via CDP")
     p.add_argument("--headless", action="store_true", help="Browser without a visible window")
-    p.add_argument("--url", default=None, help="Start URL (default: bundled demo.html in browser mode)")
+    p.add_argument("--url", default=None, help="Start URL (default: about:blank or guessed from goal)")
     p.add_argument("--mock-llm", action="store_true", help="Use scripted offline LLM")
     p.add_argument("--model", default=None, help="Override model id")
     p.add_argument("--base-url", default=None, help="Override OpenAI-compatible base URL")
     args = p.parse_args(argv)
 
+    cfg_path = args.config or str(config_path())
+
     if args.ui:
         from .ui_server import serve
-        serve(port=args.port, config_path=args.config, open_browser=True)
+        serve(port=args.port, config_path=cfg_path, open_browser=True)
         return 0
 
     if not args.goal:
         p.error("--goal is required unless --ui")
 
-    cfg = load_config(args.config)
+    cfg = load_config(cfg_path)
     if args.model:
         cfg["model"] = args.model
     if args.base_url:
         cfg["base_url"] = args.base_url
 
     use_browser = bool(args.browser)
-    if not use_browser and not args.dry_run:
-        # Default remains dry-run/fake UI for safety.
-        use_browser = False
-
-    if args.mock_llm:
-        llm = MockLLM(goal=args.goal, browser=use_browser)
-    else:
-        llm = HttpLLM(cfg["base_url"], cfg["api_key"], cfg["model"])
+    llm = MockLLM(goal=args.goal, browser=use_browser) if args.mock_llm else HttpLLM(
+        cfg["base_url"], cfg["api_key"], cfg["model"]
+    )
 
     def on_step(rec: dict) -> None:
         print(f"[{rec['step']}] {json.dumps(rec['action'], separators=(',', ':'))} -> {rec['result']}")
 
-    ui = None
     browser = None
+    steps: list = []
     try:
         if use_browser:
             from .browser import BrowserUI
-
-            start = args.url or cfg.get("start_url") or _demo_url()
+            start = _start_url(args, cfg, args.goal)
             headless = bool(args.headless or cfg.get("headless", False))
             browser = BrowserUI(headless=headless, start_url=start)
             browser.start()
-            ui = browser
-            system = SYSTEM_BROWSER
+            ui, system = browser, SYSTEM_BROWSER
             print(f"browser: {start} (headless={headless})", flush=True)
+            print(f"config: {cfg_path} model={cfg.get('model')}", flush=True)
         else:
-            ui = FakeUI()
-            system = None
+            ui, system = FakeUI(), None
 
         steps = run_loop(
             goal=args.goal,

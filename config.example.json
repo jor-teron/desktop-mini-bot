@@ -7,5 +7,5 @@
   "max_steps": 12,
   "dry_run": true,
   "headless": false,
-  "start_url": ""
+  "start_url": "about:blank"
 }

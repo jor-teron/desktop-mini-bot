@@ -33,6 +33,11 @@ curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/ins
 **Dependencies:** Python 3.10+ **stdlib only** — **no pip**.  
 Optional browser hands: system **Chromium/Chrome** via `apt` (CDP).  
 
+**All project files stay in the repo folder** (`config.json`, `.chrome/`, etc.) — nothing scattered under `~/.config`.  
+Edit `desktop-mini-bot/config.json` → `"model"` from `ollama list`.  
+
+Open Google: `./run.sh --browser --mock "open google.com"`  
+
 ```bash
 # update
 curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash -s -- --update

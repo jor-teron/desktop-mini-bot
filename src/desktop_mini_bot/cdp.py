@@ -123,9 +123,9 @@ def find_chromium() -> str:
 
 
 def launch_chromium(port: int = 9222, headless: bool = False, url: str = "about:blank") -> subprocess.Popen:
+    from .paths import chrome_dir
     bin_path = find_chromium()
-    profile = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "desktop-mini-bot-chrome")
-    os.makedirs(profile, exist_ok=True)
+    profile = str(chrome_dir())
     args = [
         bin_path,
         f"--remote-debugging-port={port}",

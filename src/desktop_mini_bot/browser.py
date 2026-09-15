@@ -122,10 +122,17 @@ class BrowserUI:
                     url = _norm_url(raw)
                 else:
                     return f"launch_app ignored for non-URL '{raw}' (browser mode)"
-                self._eval(f"location.href = {json.dumps(url)}")
-                # crude wait
+                assert self._cdp
+                self._cdp.call("Page.navigate", {"url": url})
                 import time
-                time.sleep(0.6)
+                for _ in range(50):
+                    time.sleep(0.1)
+                    try:
+                        ready = self._eval("document.readyState")
+                        if ready in {"interactive", "complete"}:
+                            break
+                    except Exception:
+                        pass
                 self._refresh()
                 msg = f"opened {self._eval('location.href')}"
             elif a == "focus_window":

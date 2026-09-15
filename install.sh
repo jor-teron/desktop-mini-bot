@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# desktop-mini-bot — one-paste install/update (no pip)
+# desktop-mini-bot — one-paste install/update (all files under project dir, no pip)
 #   curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 set -euo pipefail
 
 REPO_URL="${DMB_REPO:-https://github.com/jor-teron/desktop-mini-bot.git}"
 DEST="${DMB_HOME:-$HOME/desktop-mini-bot}"
-PREFIX="${PREFIX:-$HOME/.local}"
-BIN_DIR="$PREFIX/bin"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/desktop-mini-bot"
-CONFIG_FILE="$CONFIG_DIR/config.json"
 WITH_BROWSER=1
 WITH_MODEL=0
 SKIP_APT=0
@@ -36,7 +32,7 @@ while [[ $# -gt 0 ]]; do
     --skip-apt) SKIP_APT=1; shift ;;
     -h|--help)
       echo "Usage: install.sh [--update] [--browser|--no-browser] [--with-model] [--skip-apt]"
-      echo "Pure Python (stdlib). Optional: system Chromium via apt. No pip."
+      echo "Everything stays under the project folder. No pip. No ~/.config scatter."
       exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
@@ -62,10 +58,8 @@ if [[ -z "${_SRC}" || ! -f "${_SRC}/src/desktop_mini_bot/__main__.py" ]]; then
 fi
 ROOT="$_SRC"
 
-ensure_system() {
-  [[ "$SKIP_APT" -eq 1 ]] && return 0
-  have apt-get || { warn "no apt — install python3 yourself"; return 0; }
-  local need=()
+if [[ "$SKIP_APT" -eq 0 ]] && have apt-get; then
+  need=()
   have git || need+=(git)
   have python3 || need+=(python3)
   if [[ "$WITH_BROWSER" -eq 1 ]]; then
@@ -73,70 +67,59 @@ ensure_system() {
       need+=(chromium)
     fi
   fi
-  if [[ ${#need[@]} -gt 0 ]]; then
-    _apt_install "${need[@]}"
-  fi
-  have python3 || die "python3 missing"
-  python3 -c 'import sys; raise SystemExit(0 if sys.version_info>=(3,10) else 1)' \
-    || die "Need Python >= 3.10"
-  ok "System deps OK"
-}
+  [[ ${#need[@]} -gt 0 ]] && _apt_install "${need[@]}"
+fi
+have python3 || die "python3 missing"
+python3 -c 'import sys; raise SystemExit(0 if sys.version_info>=(3,10) else 1)' || die "Need Python >= 3.10"
+ok "System deps OK"
 
-install_agent() {
-  mkdir -p "$BIN_DIR" "$CONFIG_DIR"
-  cat > "$BIN_DIR/desktop-mini-bot" << LAUNCH
+[[ -d "$ROOT/.git" ]] && git -C "$ROOT" pull --ff-only || true
+
+# Project-local config only
+if [[ ! -f "$ROOT/config.json" ]]; then
+  cp "$ROOT/config.example.json" "$ROOT/config.json"
+  ok "Wrote $ROOT/config.json"
+else
+  warn "Keeping $ROOT/config.json"
+fi
+
+# Project-local launcher (not ~/.local)
+cat > "$ROOT/dmb" << LAUNCH
 #!/usr/bin/env bash
-export PYTHONPATH="$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
+ROOT="$ROOT"
+export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
 exec python3 -m desktop_mini_bot "\$@"
 LAUNCH
-  chmod +x "$BIN_DIR/desktop-mini-bot"
-  cat > "$BIN_DIR/desktop-mini-bot-update" << UPD
-#!/usr/bin/env bash
-exec bash "$ROOT/install.sh" --update "\$@"
-UPD
-  chmod +x "$BIN_DIR/desktop-mini-bot-update"
-  [[ -f "$CONFIG_FILE" ]] || cp "$ROOT/config.example.json" "$CONFIG_FILE"
-  if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    warn "Add to PATH:  export PATH=\"$BIN_DIR:\$PATH\""
-  fi
-  ok "Launcher installed (stdlib only — no pip)"
-}
+chmod +x "$ROOT/dmb"
+ok "Launcher: $ROOT/dmb"
 
-maybe_model() {
-  [[ "$WITH_MODEL" -eq 1 ]] || return 0
-  if ! have ollama; then
-    warn "Ollama not found (optional): curl -fsSL https://ollama.com/install.sh | sh"
-    return 0
+if [[ "$WITH_MODEL" -eq 1 ]]; then
+  if have ollama; then
+    model="${DMB_MODEL:-hammer2.0:1.5b}"
+    ollama pull "$model" || warn "model pull failed — edit $ROOT/config.json"
+    python3 - "$ROOT/config.json" "$model" <<'PY'
+import json,sys
+p,m=sys.argv[1],sys.argv[2]
+c=json.load(open(p,encoding="utf-8"))
+c["model"]=m
+json.dump(c, open(p,"w",encoding="utf-8"), indent=2)
+open(p,"a",encoding="utf-8").write("\n")
+PY
+  else
+    warn "Ollama optional: curl -fsSL https://ollama.com/install.sh | sh"
   fi
-  local model="${DMB_MODEL:-hammer2.0:1.5b}"
-  ollama pull "$model" || warn "model pull failed"
-}
+fi
 
-verify() {
-  info "Verifying…"
-  ( cd "$ROOT" && PYTHONPATH=src python3 -c "import desktop_mini_bot" ) || die "import failed"
-  ( cd "$ROOT" && PYTHONPATH=src python3 -m desktop_mini_bot --mock-llm --goal "click Save" >/dev/null ) \
-    || die "mock run failed"
-  if [[ "$WITH_BROWSER" -eq 1 ]]; then
-    if have chromium || have chromium-browser || have google-chrome || have google-chrome-stable; then
-      ok "Chromium/Chrome present"
-    else
-      warn "No Chromium found — browser mode needs: sudo apt install chromium"
-    fi
-  fi
-  ok "Verify passed"
-}
+( cd "$ROOT" && PYTHONPATH=src python3 -m desktop_mini_bot --mock-llm --goal "click Save" >/dev/null ) \
+  || die "verify failed"
+ok "Verify passed"
 
-ensure_system
-[[ -d "$ROOT/.git" ]] && git -C "$ROOT" pull --ff-only || true
-install_agent
-maybe_model
-verify
 cat <<S
 
-${GRN}desktop-mini-bot ready${RST}  (pure Python stdlib — no pip)
-  $ROOT/run.sh --ui
-  desktop-mini-bot --ui
-  Update: curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
+${GRN}Ready${RST} — everything under $ROOT
+  Config:  $ROOT/config.json   (set \"model\" from: ollama list)
+  Chat:    $ROOT/run.sh --ui
+  Google:  $ROOT/run.sh --browser --mock \"open google.com\"
+  Update:  curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 
 S
