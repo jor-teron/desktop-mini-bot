@@ -20,7 +20,7 @@ def config_path() -> Path:
 
 
 def chrome_dir() -> Path:
-    d = project_root() / ".chrome"
+    d = project_root() / "chrome-data"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

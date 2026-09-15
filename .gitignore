@@ -4,4 +4,4 @@ __pycache__/
 config.json
 dist/
 *.egg-info/
-.chrome/
+chrome-data/
