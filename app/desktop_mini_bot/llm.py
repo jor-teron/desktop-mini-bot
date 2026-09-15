@@ -44,7 +44,7 @@ class HttpLLM:
             detail = e.read().decode("utf-8", errors="replace")[:300]
             raise RuntimeError(
                 f"LLM request failed: HTTP Error {e.code}: {e.reason}. "
-                f"Check model name in config.json (ollama list). Body: {detail}"
+                f"Check model name in config.txt (ollama list). Body: {detail}"
             ) from e
         except urllib.error.URLError as e:
             raise RuntimeError(f"LLM request failed: {e}") from e
