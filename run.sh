@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
+# desktop-mini-bot v0.2.1 — convenience launcher for CLI / chat UI.
+# Sets PYTHONPATH=app and forwards flags to python -m desktop_mini_bot.
+# MIT / jor-teron.
 set -euo pipefail
+
+# --- paths / env ---
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Override with DMB_CONFIG=/path/to/config.txt if needed
 CONFIG="${DMB_CONFIG:-$ROOT/config.txt}"
 export PYTHONPATH="$ROOT/app${PYTHONPATH:+:$PYTHONPATH}"
 PYTHON=python3
@@ -13,12 +19,14 @@ Config: $CONFIG  (api_key= for Gemini)
 USAGE
 }
 
+# --- flag parse ---
 GOAL=""; HEADLESS=0; URL=""; UI=0; PORT=8765; MODEL=""; PROVIDER=""; API_KEY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
+    # Removed in v0.2 — real browser only
     --mock|--local|--dry-run) echo "note: mock/dry-run removed in v0.2 — real browser only" >&2; shift ;;
-    --browser) shift ;;
+    --browser) shift ;;  # accepted for clarity; goals always use browser
     --headless) HEADLESS=1; shift ;;
     --ui) UI=1; shift ;;
     --port) PORT="$2"; shift 2 ;;
@@ -33,8 +41,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Seed config.txt from example on first run
 [[ -f "$CONFIG" ]] || cp "$ROOT/config.example.txt" "$CONFIG"
 
+# --- dispatch ---
 if [[ "$UI" -eq 1 ]]; then
   exec "$PYTHON" -m desktop_mini_bot --ui --port "$PORT" --config "$CONFIG"
 fi

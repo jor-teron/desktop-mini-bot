@@ -1,4 +1,9 @@
-"""Minimal local chat UI — stdlib only. Gemini default; Ollama optional."""
+"""desktop-mini-bot v0.2.1 — minimal local chat UI (stdlib HTTP + SSE).
+
+Serves chat.html and /api/* for config, models, save-key, and streaming agent runs.
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
@@ -26,11 +31,15 @@ GEMINI_MODELS = [
 ]
 
 
+# --- SSE helpers ---
+
 def _sse(event: str, data: dict[str, Any]) -> bytes:
+    """Format one Server-Sent Events frame."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode()
 
 
 def list_ollama_models(base_url: str) -> list[str]:
+    """Fetch local Ollama tags via /api/tags; empty list on failure."""
     root = base_url.rstrip("/")
     if root.endswith("/v1"):
         root = root[:-3]
@@ -43,7 +52,10 @@ def list_ollama_models(base_url: str) -> list[str]:
         return []
 
 
+# --- run agent from UI ---
+
 def _start_url(goal: str, cfg: dict) -> str:
+    """Guess URL from goal text, else config start_url, else about:blank."""
     guessed = guess_url(goal)
     if guessed:
         return guessed
@@ -62,6 +74,7 @@ def _run(
     api_key: str | None,
     emit: Callable,
 ) -> None:
+    """Load config (optionally persist overrides), start BrowserUI, stream steps via emit."""
     cfg = load_config(config)
     updates: dict[str, str] = {}
     if provider:
@@ -128,15 +141,18 @@ def _run(
             br.close()
 
 
+# --- HTTP server ---
+
 def serve(
     host: str = "127.0.0.1",
     port: int = 8765,
     config_path: str | None = None,
     open_browser: bool = True,
 ) -> None:
+    """Bind a local ThreadingHTTPServer; open the chat page; block until Ctrl+C."""
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_a):
-            return
+            return  # quiet access log
 
         def do_GET(self):  # noqa: N802
             path = urlparse(self.path).path
@@ -149,13 +165,14 @@ def serve(
                 self.wfile.write(body)
                 return
             if path == "/api/config":
+                # Never send the raw API key; only a has_api_key hint
                 cfg = load_config(config_path)
                 body = json.dumps(
                     {
                         "provider": cfg.get("provider", "gemini"),
                         "model": cfg.get("model", ""),
                         "has_api_key": bool(str(cfg.get("api_key") or "").strip()),
-                        # never send the raw key to the page after first save — blank means keep
+                        # blank means keep existing key on next save
                         "api_key_hint": "••••••" if str(cfg.get("api_key") or "").strip() else "",
                     }
                 ).encode()
@@ -202,6 +219,7 @@ def serve(
                 return
 
             if path == "/api/save-key":
+                # Persist provider / model / api_key into config.txt
                 try:
                     updates: dict[str, str] = {}
                     if p.get("provider"):

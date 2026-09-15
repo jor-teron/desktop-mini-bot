@@ -1,4 +1,10 @@
-"""Tiny fake UI state for dry-run demos (no real desktop)."""
+"""desktop-mini-bot v0.2.1 — tiny fake UI for unit tests (no real desktop).
+
+Implements the same compact_state / apply surface as BrowserUI for dry loop tests.
+Not used by the production Gemini/browser path.
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +12,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+# --- fake DOM ---
+
 @dataclass
 class Element:
+    """A pretend UI control with a stable ref id."""
+
     ref: str
     role: str
     name: str
@@ -16,6 +26,8 @@ class Element:
 
 @dataclass
 class FakeUI:
+    """In-memory desktop stub: focused window, apps list, and a few elements."""
+
     focused: str = "Settings"
     apps: list[str] = field(default_factory=lambda: ["Settings", "Files", "Terminal"])
     elements: list[Element] = field(
@@ -29,6 +41,7 @@ class FakeUI:
     log: list[str] = field(default_factory=list)
 
     def snapshot(self) -> dict[str, Any]:
+        """Full structured state (for debugging / richer callers)."""
         return {
             "focused": self.focused,
             "apps": list(self.apps),
@@ -49,6 +62,7 @@ class FakeUI:
         return " | ".join(lines)
 
     def apply(self, action: dict[str, Any]) -> str:
+        """Apply one long-key action dict; append a result string to log and return it."""
         a = action["action"]
         if a == "launch_app":
             name = str(action["name"])

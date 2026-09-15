@@ -1,4 +1,9 @@
-"""CLI entry: python -m desktop_mini_bot"""
+"""desktop-mini-bot v0.2.1 — CLI entry point (python -m desktop_mini_bot).
+
+Parses flags, loads config.txt, launches Chromium via CDP, and runs the agent loop.
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,10 @@ from .loop import SYSTEM_BROWSER, run_loop
 from .paths import config_path, ensure_config
 
 
+# --- start URL resolution ---
+
 def _start_url(args, cfg, goal: str) -> str:
+    """Pick the browser start URL: --url flag, guess from goal, config, or about:blank."""
     if args.url:
         return args.url
     guessed = guess_url(goal)
@@ -24,7 +32,10 @@ def _start_url(args, cfg, goal: str) -> str:
     return "about:blank"
 
 
+# --- CLI ---
+
 def main(argv: list[str] | None = None) -> int:
+    """Entry: --ui for chat page, or --goal to drive a live browser. Returns exit code."""
     ensure_config()
     p = argparse.ArgumentParser(
         prog="desktop-mini-bot",
@@ -73,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     def on_step(rec: dict) -> None:
+        """Print each agent step as compact JSON -> result."""
         print(f"[{rec['step']}] {json.dumps(rec['action'], separators=(',', ':'))} -> {rec['result']}")
 
     browser = None

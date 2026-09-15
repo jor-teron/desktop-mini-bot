@@ -1,4 +1,9 @@
-"""LLM backends: Gemini (default) + Ollama. Stdlib only. No mock."""
+"""desktop-mini-bot v0.2.1 — LLM backends: Gemini (default) + Ollama.
+
+Stdlib urllib only; no mock/demo provider. API key comes from config.txt.
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +14,18 @@ import urllib.request
 from typing import Any, Protocol
 
 
+# --- protocol ---
+
 class LLMClient(Protocol):
+    """Anything that can complete a chat-style message list into a string."""
+
     def complete(self, messages: list[dict[str, str]], *, max_tokens: int, temperature: float) -> str: ...
 
 
+# --- URL heuristics ---
+
 def guess_url(goal: str) -> str | None:
+    """Extract or infer a start URL from a natural-language goal, or None."""
     g = goal.strip()
     m = re.search(r"https?://[^\s]+", g, re.I)
     if m:
@@ -27,10 +39,13 @@ def guess_url(goal: str) -> str | None:
     return None
 
 
+# --- Gemini API ---
+
 class GeminiLLM:
-    """Google Gemini generateContent API."""
+    """Google Gemini generateContent API (v1beta)."""
 
     def __init__(self, api_key: str, model: str = "gemini-3.5-flash-lite") -> None:
+        """Require a non-empty api_key; default model is gemini-3.5-flash-lite."""
         if not api_key or not api_key.strip():
             raise RuntimeError(
                 "Missing Gemini api_key in config.txt. Get one at https://aistudio.google.com/apikey"
@@ -39,12 +54,14 @@ class GeminiLLM:
         self.model = model.strip() or "gemini-3.5-flash-lite"
 
     def complete(self, messages: list[dict[str, str]], *, max_tokens: int, temperature: float) -> str:
+        """Map OpenAI-style messages to Gemini contents + systemInstruction; return text."""
         system_parts = [m["content"] for m in messages if m.get("role") == "system"]
         contents: list[dict[str, Any]] = []
         for m in messages:
             role = m.get("role", "user")
             if role == "system":
                 continue
+            # Gemini uses "model" where OpenAI uses "assistant"
             gem_role = "model" if role == "assistant" else "user"
             contents.append({"role": gem_role, "parts": [{"text": m.get("content", "")}]})
         if not contents:
@@ -86,15 +103,19 @@ class GeminiLLM:
             raise RuntimeError(f"unexpected Gemini response: {payload!r}") from e
 
 
+# --- Ollama (OpenAI-compatible) ---
+
 class OllamaLLM:
-    """OpenAI-compatible local Ollama."""
+    """Local Ollama via its OpenAI-compatible /v1/chat/completions endpoint."""
 
     def __init__(self, base_url: str, api_key: str, model: str) -> None:
+        """base_url usually ends with /v1; api_key is ignored by Ollama but sent as Bearer."""
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key or "ollama"
         self.model = model
 
     def complete(self, messages: list[dict[str, str]], *, max_tokens: int, temperature: float) -> str:
+        """POST chat completions; return the assistant message content."""
         url = f"{self.base_url}/chat/completions"
         body = {
             "model": self.model,
@@ -128,7 +149,10 @@ class OllamaLLM:
             raise RuntimeError(f"unexpected Ollama response: {payload!r}") from e
 
 
+# --- factory ---
+
 def make_llm(cfg: dict[str, Any]) -> LLMClient:
+    """Build GeminiLLM or OllamaLLM from a loaded config dict (no mock)."""
     provider = str(cfg.get("provider", "gemini")).strip().lower()
     model = str(cfg.get("model", "gemini-3.5-flash-lite"))
     if provider in {"ollama", "local"}:

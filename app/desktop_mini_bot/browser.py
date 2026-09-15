@@ -1,4 +1,9 @@
-"""Browser hands via system Chromium CDP — no pip / Playwright."""
+"""desktop-mini-bot v0.2.1 — browser hands via system Chromium CDP.
+
+Tags interactive DOM nodes with data-dmb refs and applies agent actions (no pip).
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +15,10 @@ from urllib.parse import urlparse
 from .cdp import Cdp, CdpError, launch_chromium, wait_ws_url
 
 
+# --- URL helpers ---
+
 def _norm_url(name: str) -> str:
+    """Ensure a scheme; bare hosts become https://…"""
     n = name.strip()
     if n.startswith(("http://", "https://", "file://", "about:")):
         return n
@@ -18,22 +26,28 @@ def _norm_url(name: str) -> str:
 
 
 def _looks_url(name: str) -> bool:
+    """True if name looks like a URL or hostname (not a plain app label)."""
     n = name.strip()
     return n.startswith(("http://", "https://", "file://")) or ("." in n and " " not in n)
 
 
+# --- BrowserUI ---
+
 @dataclass
 class BrowserUI:
+    """Live Chromium page: launch, scrape refs, apply open/find/click/type/done."""
+
     headless: bool = False
     start_url: str = "about:blank"
-    port: int = 9222
+    port: int = 9222  # remote-debugging-port
     _proc: Any = field(default=None, repr=False)
     _cdp: Cdp | None = field(default=None, repr=False)
-    _elements: list[dict[str, str]] = field(default_factory=list)
-    _last_hits: list[str] = field(default_factory=list)
+    _elements: list[dict[str, str]] = field(default_factory=list)  # {ref, role, name}
+    _last_hits: list[str] = field(default_factory=list)  # refs from last find
     log: list[str] = field(default_factory=list)
 
     def start(self) -> None:
+        """Launch Chromium, connect CDP, enable Runtime/Page, refresh element catalog."""
         self._proc = launch_chromium(self.port, self.headless, self.start_url)
         self._cdp = Cdp(wait_ws_url(self.port))
         self._cdp.call("Runtime.enable")
@@ -41,6 +55,7 @@ class BrowserUI:
         self._refresh()
 
     def close(self) -> None:
+        """Tear down CDP and terminate the browser process."""
         if self._cdp:
             self._cdp.close()
             self._cdp = None
@@ -60,6 +75,7 @@ class BrowserUI:
         self.close()
 
     def _eval(self, expr: str) -> Any:
+        """Evaluate a JS expression in the page and return its value."""
         assert self._cdp
         r = self._cdp.call("Runtime.evaluate", {"expression": expr, "returnByValue": True, "awaitPromise": True})
         if r.get("exceptionDetails"):
@@ -67,6 +83,7 @@ class BrowserUI:
         return (r.get("result") or {}).get("value")
 
     def _refresh(self) -> None:
+        """Scan interactive elements, stamp data-dmb indices, cache up to 40 refs."""
         script = r"""
 (() => {
   const out = [];
@@ -101,6 +118,7 @@ class BrowserUI:
         self._elements = list(self._eval(script) or [])
 
     def compact_state(self) -> str:
+        """Token-cheap state string: title, url, and first 25 eN:role/name entries."""
         try:
             title = self._eval("document.title") or ""
             url = self._eval("location.href") or ""
@@ -112,6 +130,7 @@ class BrowserUI:
         return " | ".join(parts)
 
     def apply(self, action: dict[str, Any]) -> str:
+        """Execute one long-key action against the live page; return a short result."""
         a = action["action"]
         try:
             if a in {"open_url", "launch_app"}:
@@ -125,6 +144,7 @@ class BrowserUI:
                 assert self._cdp
                 self._cdp.call("Page.navigate", {"url": url})
                 import time
+                # Wait briefly for document.readyState
                 for _ in range(50):
                     time.sleep(0.1)
                     try:
@@ -145,6 +165,7 @@ class BrowserUI:
                 msg = f"find ok {hits}" if hits else f"find miss {role}/{name}"
             elif a == "click":
                 ref = str(action["ref"])
+                # Allow hit / hit1 / first after a successful find
                 if ref in {"hit", "hit1", "first"} and self._last_hits:
                     ref = self._last_hits[0]
                 if ref not in {e["ref"] for e in self._elements} and self._last_hits:

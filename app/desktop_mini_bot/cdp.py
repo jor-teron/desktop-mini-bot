@@ -1,4 +1,9 @@
-"""Minimal Chromium CDP client — stdlib only (no pip)."""
+"""desktop-mini-bot v0.2.1 — minimal Chromium CDP client (stdlib only).
+
+Raw WebSocket + HTTP to talk to --remote-debugging-port; no Playwright/pip.
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
@@ -16,10 +21,14 @@ from urllib.parse import urlparse
 
 
 class CdpError(RuntimeError):
+    """CDP handshake, socket, or protocol failure."""
     pass
 
 
+# --- WebSocket (client frames) ---
+
 def _ws_connect(url: str, timeout: float = 10.0) -> socket.socket:
+    """Open a TCP(/TLS) socket and complete the HTTP Upgrade to websocket."""
     u = urlparse(url)
     host, port = u.hostname or "127.0.0.1", u.port or (443 if u.scheme == "wss" else 80)
     path = u.path or "/"
@@ -44,10 +53,10 @@ def _ws_connect(url: str, timeout: float = 10.0) -> socket.socket:
 
 
 def _ws_send(sock: socket.socket, data: bytes) -> None:
-    # Client frames must be masked
+    """Send a masked text frame (clients must mask per RFC 6455)."""
     mask = os.urandom(4)
     ln = len(data)
-    hdr = bytearray([0x81])
+    hdr = bytearray([0x81])  # FIN + text opcode
     if ln < 126:
         hdr.append(0x80 | ln)
     elif ln < 65536:
@@ -61,6 +70,7 @@ def _ws_send(sock: socket.socket, data: bytes) -> None:
 
 
 def _ws_recv(sock: socket.socket) -> bytes:
+    """Read one websocket frame payload; reply to pings; error on close."""
     def read(n: int) -> bytes:
         out = b""
         while len(out) < n:
@@ -84,24 +94,30 @@ def _ws_recv(sock: socket.socket) -> bytes:
     opcode = b1 & 0x0F
     if opcode == 0x8:
         raise CdpError("CDP websocket closed")
-    if opcode == 0x9:  # ping -> pong
-        _ws_send(sock, payload)  # simplistic
+    if opcode == 0x9:  # ping -> pong (reuse send; simplistic)
+        _ws_send(sock, payload)
         return _ws_recv(sock)
     return payload
 
 
+# --- CDP session ---
+
 class Cdp:
+    """One WebSocket session to a Chromium page target; sequential JSON-RPC calls."""
+
     def __init__(self, ws_url: str) -> None:
         self._sock = _ws_connect(ws_url)
-        self._id = 0
+        self._id = 0  # monotonically increasing request id
 
     def close(self) -> None:
+        """Close the underlying socket (best-effort)."""
         try:
             self._sock.close()
         except Exception:
             pass
 
     def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        """Send a CDP method and wait for the matching id result (skip events)."""
         self._id += 1
         msg_id = self._id
         _ws_send(self._sock, json.dumps({"id": msg_id, "method": method, "params": params or {}}).encode())
@@ -113,7 +129,10 @@ class Cdp:
                 return data.get("result")
 
 
+# --- launch Chromium ---
+
 def find_chromium() -> str:
+    """Locate a system Chromium/Chrome binary on PATH."""
     for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome"):
         from shutil import which
         p = which(name)
@@ -123,6 +142,7 @@ def find_chromium() -> str:
 
 
 def launch_chromium(port: int = 9222, headless: bool = False, url: str = "about:blank") -> subprocess.Popen:
+    """Start Chromium with remote debugging on port and a dedicated user-data-dir."""
     from .paths import chrome_dir
     bin_path = find_chromium()
     profile = str(chrome_dir())
@@ -141,7 +161,7 @@ def launch_chromium(port: int = 9222, headless: bool = False, url: str = "about:
 
 
 def wait_ws_url(port: int = 9222, timeout: float = 15.0) -> str:
-    """Return a *page* target websocket (not the browser-level one)."""
+    """Poll /json/list until a page target websocket URL appears (not browser-level)."""
     deadline = time.time() + timeout
     list_url = f"http://127.0.0.1:{port}/json/list"
     while time.time() < deadline:
@@ -151,7 +171,7 @@ def wait_ws_url(port: int = 9222, timeout: float = 15.0) -> str:
             for tab in tabs:
                 if tab.get("type") == "page" and tab.get("webSocketDebuggerUrl"):
                     return tab["webSocketDebuggerUrl"]
-            # No page yet — open one
+            # No page yet — ask Chromium to open about:blank
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}/json/new?about:blank", timeout=1).read()
             except Exception:

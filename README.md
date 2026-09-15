@@ -1,6 +1,9 @@
 # desktop-mini-bot
 
-Lightweight **no-vision** Linux desktop CUA. **v0.2.0** is a real browser agent: **Google Gemini** online by default (`gemini-3.5-flash-lite`), **Ollama** optional. Stdlib only (no pip). API key lives in plain `config.txt`.
+Lightweight **no-vision** Linux desktop CUA. **v0.2.1** is a real browser agent: **Google Gemini** online by default (`gemini-3.5-flash-lite`), **Ollama** optional. Stdlib only (no pip). API key lives in plain `config.txt`.
+
+
+Documentation pass in **v0.2.1**: module headers, section banners, and function docs across the tree.
 
 ## Install / update
 

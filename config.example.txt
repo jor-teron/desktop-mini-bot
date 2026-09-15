@@ -1,20 +1,33 @@
-# desktop-mini-bot — plain text config (copy to config.txt)
+# desktop-mini-bot v0.2.1 — plain text config (copy to config.txt)
+# MIT / jor-teron — do not commit config.txt (it holds secrets).
 
-# provider: gemini (online, default) | ollama (local)
+# --- provider ---
+# provider: gemini (online, default) | ollama (local OpenAI-compat)
 provider=gemini
 
-# Google AI Studio / Gemini API key (saved here — do not commit config.txt)
+# Google AI Studio / Gemini API key (https://aistudio.google.com/apikey)
+# Saved here by the chat UI "Save" button as well.
 api_key=
 
-# Default online model
+# Default online model id (Gemini). For Ollama, set an ollama list tag instead.
 model=gemini-3.5-flash-lite
 
-# Only used when provider=ollama
+# --- ollama (only when provider=ollama) ---
+# OpenAI-compatible base URL (usually …/v1)
 ollama_base_url=http://127.0.0.1:11434/v1
+# Bearer token Ollama ignores; kept for API shape
 ollama_api_key=ollama
 
+# --- agent loop ---
+# Max tokens for each LLM reply (keep small for fast local models)
 max_tokens=120
+# Sampling temperature (low = more stable JSON)
 temperature=0.1
+# Safety cap on observe→act iterations per goal
 max_steps=20
+
+# --- browser ---
+# true/1/yes/on = hide Chromium window
 headless=false
+# Initial page if the goal does not imply a URL
 start_url=about:blank

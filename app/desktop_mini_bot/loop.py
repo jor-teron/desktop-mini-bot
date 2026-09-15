@@ -1,4 +1,9 @@
-"""Agent loop: short prompts, short JSON, last-3 history."""
+"""desktop-mini-bot v0.2.1 — agent loop: short prompts, short JSON, last-3 history.
+
+Asks the LLM for one action per step, applies it on a UI surface, until done or max_steps.
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
@@ -10,11 +15,18 @@ from .llm import LLMClient
 from .schema import SchemaError, parse_action, to_wire
 
 
+# --- UI protocol ---
+
 class UISurface(Protocol):
+    """Anything the loop can observe (compact_state) and act on (apply)."""
+
     def compact_state(self) -> str: ...
     def apply(self, action: dict[str, Any]) -> str: ...
 
 
+# --- system prompts ---
+
+# Desktop-oriented prompt (used when FakeUI is the surface)
 SYSTEM_DESKTOP = """You are desktop-mini-bot, a Linux desktop agent.
 No screenshots. Reply with ONE JSON object only. No prose.
 Actions (short keys):
@@ -27,6 +39,7 @@ type: {"a":"type","txt":"<text>","ref":"<id>?"}
 done: {"a":"done","s":"<summary>"}
 Prefer find then click. Keep output under 80 tokens."""
 
+# Live Chromium / DOM agent prompt (production path)
 SYSTEM_BROWSER = """You are a real computer-use agent controlling a live web browser (DOM only, no screenshots).
 Reply with ONE JSON object only. No prose, no markdown.
 Actions:
@@ -41,6 +54,8 @@ Work step-by-step toward the goal. Prefer open_url then find/type/click.
 When the goal is finished, emit done. Keep each reply under ~100 tokens."""
 
 
+# --- agent loop ---
+
 def run_loop(
     *,
     goal: str,
@@ -52,12 +67,18 @@ def run_loop(
     system_prompt: str | None = None,
     on_step: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
+    """Run the observe → LLM → parse → apply cycle until done or max_steps.
+
+    Returns a list of step records: {step, action (wire), result, raw}.
+    Retries once if the first LLM reply fails schema validation.
+    """
     ui = ui or FakeUI()
     system = system_prompt or SYSTEM_DESKTOP
     history: list[dict[str, Any]] = []
     steps: list[dict[str, Any]] = []
 
     for step in range(1, max_steps + 1):
+        # Only last 3 wire actions — keeps the prompt tiny for slow models
         hist = history[-3:]
         user = (
             f"goal: {goal}\n"
@@ -73,6 +94,7 @@ def run_loop(
         try:
             action = parse_action(raw)
         except (SchemaError, json.JSONDecodeError) as e:
+            # One repair turn with the bad output echoed back
             repair = (
                 f"Invalid JSON ({e}). Reply with one valid action object only.\n"
                 f"Your previous output was:\n{raw[:200]}"

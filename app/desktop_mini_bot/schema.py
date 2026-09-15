@@ -1,11 +1,16 @@
-"""Strict short-JSON action schema (token-cheap for ~10 tok/s models)."""
+"""desktop-mini-bot v0.2.1 — short-JSON action schema (token-cheap).
+
+Parses model output into validated long-key action dicts and compact wire form.
+Part of the lightweight no-vision Linux CUA (stdlib only).
+MIT / jor-teron.
+"""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-# Wire keys are short on purpose.
+# Required long keys per action name (wire keys are short on purpose)
 ACTION_KEYS = {
     "launch_app": ("name",),
     "open_url": ("url",),
@@ -16,6 +21,7 @@ ACTION_KEYS = {
     "done": ("summary",),
 }
 
+# Short wire key -> long key (models emit short keys to save tokens)
 ALIASES = {
     "a": "action",
     "n": "name",
@@ -35,10 +41,14 @@ ALIASES = {
 
 
 class SchemaError(ValueError):
+    """Raised when model output is not a valid action object."""
     pass
 
 
+# --- expand / validate ---
+
 def _expand(raw: dict[str, Any]) -> dict[str, Any]:
+    """Map short aliases to long keys; keep unknown keys as-is."""
     out: dict[str, Any] = {}
     for k, v in raw.items():
         key = ALIASES.get(k, k)
@@ -49,7 +59,11 @@ def _expand(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_action(text: str) -> dict[str, Any]:
-    """Parse model output into a validated action dict with long keys."""
+    """Parse model output into a validated action dict with long keys.
+
+    Strips markdown fences and surrounding prose; requires a known action
+    and its mandatory fields.
+    """
     text = text.strip()
     # Strip common fences / trailing chatter.
     if "```" in text:
@@ -91,7 +105,7 @@ def parse_action(text: str) -> dict[str, Any]:
 
 
 def to_wire(action: dict[str, Any]) -> dict[str, Any]:
-    """Compact form for prompts / logs."""
+    """Compact short-key form for prompts and step logs."""
     a = action["action"]
     wire: dict[str, Any] = {"a": a}
     if a == "launch_app":
