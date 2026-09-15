@@ -14,7 +14,7 @@ from .paths import config_path, ensure_config, project_root
 
 
 def _demo_url() -> str:
-    return (project_root() / "examples" / "demo.html").as_uri()
+    return (project_root() / "app" / "examples" / "demo.html").as_uri()
 
 
 def _start_url(args, cfg, goal: str) -> str:
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ui", action="store_true", help="Tiny local chat page (127.0.0.1)")
     p.add_argument("--port", type=int, default=8765, help="Chat UI port")
     p.add_argument("--goal", required=False, help="What to accomplish")
-    p.add_argument("--config", default=None, help=f"Config JSON (default: {config_path()})")
+    p.add_argument("--config", default=None, help=f"config.txt (default: {config_path()})")
     p.add_argument("--dry-run", action="store_true", help="Fake UI only (no browser)")
     p.add_argument("--browser", action="store_true", help="Control real Chromium via CDP")
     p.add_argument("--headless", action="store_true", help="Browser without a visible window")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# desktop-mini-bot — one-paste install/update (all files under project dir, no pip)
+# desktop-mini-bot 0.1.1 — one-paste install/update (no pip; all under project dir)
 #   curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 set -euo pipefail
 
@@ -30,16 +30,13 @@ while [[ $# -gt 0 ]]; do
     --no-browser) WITH_BROWSER=0; shift ;;
     --with-model) WITH_MODEL=1; shift ;;
     --skip-apt) SKIP_APT=1; shift ;;
-    -h|--help)
-      echo "Usage: install.sh [--update] [--browser|--no-browser] [--with-model] [--skip-apt]"
-      echo "Everything stays under the project folder. No pip. No ~/.config scatter."
-      exit 0 ;;
+    -h|--help) echo "Usage: install.sh [--update] [--browser|--no-browser] [--with-model] [--skip-apt]"; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
 done
 
 _SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
-if [[ -z "${_SRC}" || ! -f "${_SRC}/src/desktop_mini_bot/__main__.py" ]]; then
+if [[ -z "${_SRC}" || ! -f "${_SRC}/app/desktop_mini_bot/__main__.py" ]]; then
   if ! have git; then
     [[ "$SKIP_APT" -eq 0 ]] && _apt_install git || die "git required"
   fi
@@ -75,19 +72,17 @@ ok "System deps OK"
 
 [[ -d "$ROOT/.git" ]] && git -C "$ROOT" pull --ff-only || true
 
-# Project-local config only
-if [[ ! -f "$ROOT/config.json" ]]; then
-  cp "$ROOT/config.example.json" "$ROOT/config.json"
-  ok "Wrote $ROOT/config.json"
+if [[ ! -f "$ROOT/config.txt" ]]; then
+  cp "$ROOT/config.example.txt" "$ROOT/config.txt"
+  ok "Wrote $ROOT/config.txt"
 else
-  warn "Keeping $ROOT/config.json"
+  warn "Keeping $ROOT/config.txt"
 fi
 
-# Project-local launcher (not ~/.local)
 cat > "$ROOT/dmb" << LAUNCH
 #!/usr/bin/env bash
 ROOT="$ROOT"
-export PYTHONPATH="\$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
+export PYTHONPATH="\$ROOT/app\${PYTHONPATH:+:\$PYTHONPATH}"
 exec python3 -m desktop_mini_bot "\$@"
 LAUNCH
 chmod +x "$ROOT/dmb"
@@ -96,30 +91,26 @@ ok "Launcher: $ROOT/dmb"
 if [[ "$WITH_MODEL" -eq 1 ]]; then
   if have ollama; then
     model="${DMB_MODEL:-hammer2.0:1.5b}"
-    ollama pull "$model" || warn "model pull failed — edit $ROOT/config.json"
-    python3 - "$ROOT/config.json" "$model" <<'PY'
-import json,sys
-p,m=sys.argv[1],sys.argv[2]
-c=json.load(open(p,encoding="utf-8"))
-c["model"]=m
-json.dump(c, open(p,"w",encoding="utf-8"), indent=2)
-open(p,"a",encoding="utf-8").write("\n")
-PY
+    ollama pull "$model" || warn "model pull failed — edit $ROOT/config.txt"
+    if grep -q '^model=' "$ROOT/config.txt" 2>/dev/null; then
+      sed -i "s/^model=.*/model=$model/" "$ROOT/config.txt"
+    else
+      echo "model=$model" >> "$ROOT/config.txt"
+    fi
   else
     warn "Ollama optional: curl -fsSL https://ollama.com/install.sh | sh"
   fi
 fi
 
-( cd "$ROOT" && PYTHONPATH=src python3 -m desktop_mini_bot --mock-llm --goal "click Save" >/dev/null ) \
+( cd "$ROOT" && PYTHONPATH=app python3 -m desktop_mini_bot --mock-llm --goal "click Save" >/dev/null ) \
   || die "verify failed"
-ok "Verify passed"
+ok "Verify passed (v0.1.1)"
 
 cat <<S
 
-${GRN}Ready${RST} — everything under $ROOT
-  Config:  $ROOT/config.json   (set \"model\" from: ollama list)
-  Chat:    $ROOT/run.sh --ui
-  Google:  $ROOT/run.sh --browser --mock \"open google.com\"
-  Update:  curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
+${GRN}Ready 0.1.1${RST} — $ROOT
+  Config: $ROOT/config.txt   (model=… from ollama list)
+  Chat:   $ROOT/run.sh --ui   (model dropdown)
+  Google: $ROOT/run.sh --browser --mock "open google.com"
 
 S

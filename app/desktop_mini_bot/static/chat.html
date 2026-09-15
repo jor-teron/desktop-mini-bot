@@ -5,14 +5,18 @@
 <title>desktop-mini-bot</title>
 <style>
 body{font:16px system-ui,sans-serif;max-width:36rem;margin:1.5rem auto;padding:0 1rem;background:#111;color:#eee}
-textarea{width:100%;min-height:4.5rem;padding:.6rem;border-radius:8px;border:1px solid #333;background:#1a1a1a;color:#eee}
+textarea,select{width:100%;padding:.6rem;border-radius:8px;border:1px solid #333;background:#1a1a1a;color:#eee;font:inherit}
+textarea{min-height:4.5rem}
 .opts{margin:.6rem 0;color:#aaa;font-size:.9rem;display:flex;flex-wrap:wrap;gap:.8rem}
+label.block{display:block;margin:.5rem 0 .25rem;color:#aaa;font-size:.85rem}
 button{margin-right:.4rem;padding:.45rem .9rem;border:0;border-radius:8px;background:#3d8bfd;color:#fff;cursor:pointer}
 button:disabled{opacity:.5}#log{white-space:pre-wrap;font:12px ui-monospace,monospace;background:#1a1a1a;border-radius:8px;padding:.8rem;min-height:8rem;margin-top:1rem}
 #status{color:#8ab;margin:.5rem 0;font-size:.9rem}.err{color:#f66}.ok{color:#6c6}
 </style>
 <h1>desktop-mini-bot</h1>
-<p style="color:#888;margin-top:0">Local chat · bot acts in a separate window</p>
+<p style="color:#888;margin-top:0">Local chat · pick a model · bot acts in a separate window</p>
+<label class="block" for="model">Model</label>
+<select id="model"><option value="">Loading models…</option></select>
 <textarea id="g" placeholder="e.g. open google.com   or   click Save"></textarea>
 <div class="opts">
 <label><input id="m" type="checkbox" checked> Mock brain</label>
@@ -23,15 +27,35 @@ button:disabled{opacity:.5}#log{white-space:pre-wrap;font:12px ui-monospace,mono
 <div id="status">Ready</div>
 <pre id="log"></pre>
 <script>
-const log=document.getElementById('log'),st=document.getElementById('status'),go=document.getElementById('go');
+const log=document.getElementById('log'),st=document.getElementById('status'),go=document.getElementById('go'),modelEl=document.getElementById('model');
 const line=t=>log.textContent+=t+'\n';
+async function loadModels(){
+  try{
+    const r=await fetch('/api/models');
+    const j=await r.json();
+    modelEl.innerHTML='';
+    const models=j.models||[];
+    if(!models.length){
+      modelEl.innerHTML='<option value="">(no Ollama models — ollama list)</option>';
+      return;
+    }
+    for(const name of models){
+      const o=document.createElement('option');
+      o.value=name; o.textContent=name;
+      if(name===j.current) o.selected=true;
+      modelEl.appendChild(o);
+    }
+  }catch(e){
+    modelEl.innerHTML='<option value="">(could not load models)</option>';
+  }
+}
 async function run(){
   const goal=document.getElementById('g').value.trim();
   if(!goal){st.className='err';st.textContent='Type a goal';return}
   go.disabled=true;st.className='';st.textContent='Running…';line('— '+goal);
   try{
     const res=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({goal,mock:m.checked,browser:b.checked,headless:h.checked})});
+      body:JSON.stringify({goal,mock:m.checked,browser:b.checked,headless:h.checked,model:modelEl.value||null})});
     if(!res.ok||!res.body)throw new Error('HTTP '+res.status);
     const r=res.body.getReader(),d=new TextDecoder();let buf='';
     while(true){
@@ -52,9 +76,10 @@ async function run(){
         else if(ev==='error'){st.className='err';st.textContent=o.message||'Error';line('error: '+o.message)}
       }
     }
-    if(!st.className) {st.className='ok';st.textContent='Finished'}
+    if(!st.className){st.className='ok';st.textContent='Finished'}
   }catch(e){st.className='err';st.textContent=String(e);line('error: '+e)}
   finally{go.disabled=false}
 }
 go.onclick=run;
+loadModels();
 </script>

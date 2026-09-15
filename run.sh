@@ -1,22 +1,16 @@
 #!/usr/bin/env bash
-# All paths are inside this project directory.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG="${DMB_CONFIG:-$ROOT/config.json}"
-export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+CONFIG="${DMB_CONFIG:-$ROOT/config.txt}"
+export PYTHONPATH="$ROOT/app${PYTHONPATH:+:$PYTHONPATH}"
 PYTHON=python3
 
-usage() {
-  cat <<USAGE
-Usage: ./run.sh [options] [goal...]
-
-  ./run.sh --ui
-  ./run.sh --browser --mock "open google.com"
-  ./run.sh --browser --local "open https://www.google.com"
-  ./run.sh --browser --mock "click Save"          # demo page
-
-Options: --mock --local --browser --headless --url URL --model NAME --ui --port N --config PATH
-Config file: $CONFIG
+usage(){ cat <<USAGE
+./run.sh --ui
+./run.sh --browser --mock "open google.com"
+./run.sh --browser --local "open https://www.google.com"
+./run.sh --browser --mock "click Save"
+Config: $CONFIG
 USAGE
 }
 
@@ -34,26 +28,24 @@ while [[ $# -gt 0 ]]; do
     --model) MODEL="$2"; shift 2 ;;
     --config) CONFIG="$2"; shift 2 ;;
     --) shift; GOAL="$*"; break ;;
-    -*) echo "unknown: $1" >&2; usage; exit 1 ;;
+    -*) echo "unknown: $1" >&2; exit 1 ;;
     *) [[ -z "$GOAL" ]] && GOAL="$1" || GOAL="$GOAL $1"; shift ;;
   esac
 done
 
+[[ -f "$CONFIG" ]] || cp "$ROOT/config.example.txt" "$CONFIG"
+
 if [[ "$UI" -eq 1 ]]; then
-  [[ -f "$CONFIG" ]] || cp "$ROOT/config.example.json" "$CONFIG"
   exec "$PYTHON" -m desktop_mini_bot --ui --port "$PORT" --config "$CONFIG"
 fi
-
 if [[ -z "$GOAL" ]]; then
   read -r -p "Goal? " GOAL
-  [[ -n "$GOAL" ]] || { echo "empty goal" >&2; exit 1; }
+  [[ -n "$GOAL" ]] || exit 1
 fi
-
 ARGS=(--goal "$GOAL" --config "$CONFIG")
 [[ "$BROWSER" -eq 1 ]] && ARGS+=(--browser) || ARGS+=(--dry-run)
 [[ "$HEADLESS" -eq 1 ]] && ARGS+=(--headless)
 [[ -n "$URL" ]] && ARGS+=(--url "$URL")
 [[ -n "$MODEL" ]] && ARGS+=(--model "$MODEL")
 [[ "$MODE" == mock ]] && ARGS+=(--mock-llm)
-[[ -f "$CONFIG" ]] || cp "$ROOT/config.example.json" "$CONFIG"
 exec "$PYTHON" -m desktop_mini_bot "${ARGS[@]}"
