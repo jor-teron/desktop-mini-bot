@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — minimal Chromium CDP client (stdlib only).
+"""desktop-mini-bot v0.2.3 — minimal Chromium CDP client (stdlib only).
 
 Raw WebSocket + HTTP to talk to --remote-debugging-port; no Playwright/pip.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -142,7 +142,11 @@ def find_chromium() -> str:
 
 
 def launch_chromium(port: int = 9222, headless: bool = False, url: str = "about:blank") -> subprocess.Popen:
-    """Start Chromium with remote debugging on port and a dedicated user-data-dir."""
+    """Start Chromium with remote debugging on port and a dedicated AI user-data-dir.
+
+    Uses app/chrome-data/ only — never the user's personal Chrome profile.
+    When not headless, adds --start-maximized for a full window on Linux.
+    """
     from .paths import chrome_dir
     bin_path = find_chromium()
     profile = str(chrome_dir())
@@ -156,6 +160,8 @@ def launch_chromium(port: int = 9222, headless: bool = False, url: str = "about:
     ]
     if headless:
         args += ["--headless=new", "--disable-gpu"]
+    else:
+        args.append("--start-maximized")
     args.append(url)
     return subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

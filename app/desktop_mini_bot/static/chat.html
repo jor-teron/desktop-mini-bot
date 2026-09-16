@@ -1,5 +1,5 @@
 <!--
-  desktop-mini-bot v0.2.2 — local chat UI (served by ui_server.py).
+  desktop-mini-bot v0.2.3 — local chat UI (served by ui_server.py).
   Provider/model picker, API key save to config.txt, SSE agent run log.
   Part of the lightweight no-vision Linux CUA (stdlib only). MIT / jor-teron.
 -->
@@ -39,6 +39,7 @@ button.secondary{background:#333}button:disabled{opacity:.5}
 <label><input id="h" type="checkbox"> Headless</label>
 </div>
 <button id="go">Send</button>
+<button type="button" class="secondary" id="clearLog">Clear</button>
 <div id="status">Ready</div>
 <pre id="log"></pre>
 <script>
@@ -118,6 +119,11 @@ async function run(){
   }catch(e){st.className='err';st.textContent=String(e);line('error: '+e)}
   finally{go.disabled=false}
 }
+document.getElementById('clearLog').onclick=()=>{
+  log.textContent='';
+  st.className='';
+  st.textContent='Ready';
+};
 go.onclick=run;
 (async()=>{await loadConfig();await loadModels()})();
 </script>

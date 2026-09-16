@@ -1,5 +1,10 @@
-# desktop-mini-bot v0.2.2 — plain text config (copy to config.txt)
+# desktop-mini-bot v0.2.3 — plain text config (copy to config.txt)
 # MIT / jor-teron — do not commit config.txt (it holds secrets).
+#
+# Layout (project root):
+#   workspace/       — downloads + saved files (Chromium downloadPath)
+#   app/chrome-data/ — AI-only Chromium profile (NOT your personal Chrome)
+#   config.txt       — this file after copy
 
 # --- provider ---
 # provider: gemini (online, default) | ollama (local OpenAI-compat)
@@ -39,5 +44,8 @@ rpm_limit=0
 # --- browser ---
 # true/1/yes/on = hide Chromium window
 headless=false
+# Leave the AI Chromium window open after a goal finishes (ignored when headless)
+keep_browser_open=true
 # Initial page if the goal does not imply a URL
 start_url=about:blank
+# Downloads go to ./workspace/ (project root). Profile is app/chrome-data/ only.

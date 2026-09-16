@@ -3,5 +3,7 @@ __pycache__/
 .venv/
 config.txt
 app/chrome-data/
+workspace/*
+!workspace/.gitkeep
 dist/
 *.egg-info/

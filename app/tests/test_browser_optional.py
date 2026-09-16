@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — browser URL helpers + optional Chromium smoke.
+"""desktop-mini-bot v0.2.3 — browser URL helpers + optional Chromium smoke.
 
 Skips if no system Chromium/Chrome is installed.
 Part of the lightweight no-vision Linux CUA (stdlib only).

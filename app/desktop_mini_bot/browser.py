@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — browser hands via system Chromium CDP.
+"""desktop-mini-bot v0.2.3 — browser hands via system Chromium CDP.
 
 Tags interactive DOM nodes with data-dmb refs and applies agent actions (no pip).
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -47,25 +47,66 @@ class BrowserUI:
     log: list[str] = field(default_factory=list)
 
     def start(self) -> None:
-        """Launch Chromium, connect CDP, enable Runtime/Page, refresh element catalog."""
+        """Launch Chromium, connect CDP, enable Runtime/Page, set downloads, maximize, refresh."""
         self._proc = launch_chromium(self.port, self.headless, self.start_url)
         self._cdp = Cdp(wait_ws_url(self.port))
         self._cdp.call("Runtime.enable")
         self._cdp.call("Page.enable")
+        self._setup_downloads()
+        if not self.headless:
+            self._maximize_window()
         self._refresh()
 
-    def close(self) -> None:
-        """Tear down CDP and terminate the browser process."""
+    # --- post-connect setup ---
+
+    def _setup_downloads(self) -> None:
+        """Point Chromium downloads at project-root workspace/ via CDP."""
+        from .paths import workspace_dir
+        assert self._cdp
+        path = str(workspace_dir())
+        params = {"behavior": "allow", "downloadPath": path, "eventsEnabled": True}
+        # Prefer Browser.setDownloadBehavior; fall back to Page.* on older Chromium
+        try:
+            self._cdp.call("Browser.setDownloadBehavior", params)
+        except Exception:
+            try:
+                self._cdp.call("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": path})
+            except Exception:
+                pass  # best-effort; agent can still run without download routing
+
+    def _maximize_window(self) -> None:
+        """Maximize the browser window via CDP (complements --start-maximized)."""
+        assert self._cdp
+        try:
+            info = self._cdp.call("Browser.getWindowForTarget", {})
+            wid = info.get("windowId")
+            if wid is not None:
+                self._cdp.call(
+                    "Browser.setWindowBounds",
+                    {"windowId": wid, "bounds": {"windowState": "maximized"}},
+                )
+        except Exception:
+            pass  # Linux/WM may ignore; launch flag still applies
+
+    def close(self, kill_process: bool = True) -> None:
+        """Tear down CDP; optionally terminate the Chromium subprocess.
+
+        When kill_process is False (keep_browser_open), leave Chromium running
+        so the user can keep using the AI profile window after the agent stops.
+        """
         if self._cdp:
             self._cdp.close()
             self._cdp = None
-        if self._proc and self._proc.poll() is None:
+        if kill_process and self._proc and self._proc.poll() is None:
             self._proc.terminate()
             try:
                 self._proc.wait(timeout=3)
             except Exception:
                 self._proc.kill()
-        self._proc = None
+            self._proc = None
+        elif not kill_process:
+            # Detach reference so we do not kill on later GC / accidental close
+            self._proc = None
 
     def __enter__(self) -> "BrowserUI":
         self.start()

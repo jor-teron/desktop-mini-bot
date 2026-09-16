@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — LLM request pacing (gap, RPM, token_rate).
+"""desktop-mini-bot v0.2.3 — LLM request pacing (gap, RPM, token_rate).
 
 RateLimiter sleeps around llm.complete() so free-tier / local pacing stays polite.
 Token pacing uses approx tokens = max(1, len(text)//4) (chars/4); does not stream-edit the API.

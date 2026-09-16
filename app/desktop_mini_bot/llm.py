@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — LLM backends: Gemini (default) + Ollama.
+"""desktop-mini-bot v0.2.3 — LLM backends: Gemini (default) + Ollama.
 
 Stdlib urllib only; no mock/demo provider. API key comes from config.txt.
 Part of the lightweight no-vision Linux CUA (stdlib only).

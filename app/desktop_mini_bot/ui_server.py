@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — minimal local chat UI (stdlib HTTP + SSE).
+"""desktop-mini-bot v0.2.3 — minimal local chat UI (stdlib HTTP + SSE).
 
 Serves chat.html and /api/* for config, models, save-key, and streaming agent runs.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -19,7 +19,7 @@ from .config import load_config, set_keys
 from .llm import make_llm, guess_url
 from .loop import SYSTEM_BROWSER, run_loop
 from .rate_limit import RateLimiter
-from .paths import project_root
+from .paths import project_root, workspace_dir
 
 CHAT = Path(__file__).with_name("static") / "chat.html"
 
@@ -100,11 +100,13 @@ def _run(
         return
 
     br = None
+    use_headless = headless or bool(cfg.get("headless"))
+    keep_open = bool(cfg.get("keep_browser_open", True)) and not use_headless
     try:
         from .browser import BrowserUI
 
         start = _start_url(goal, cfg)
-        br = BrowserUI(headless=headless or bool(cfg.get("headless")), start_url=start)
+        br = BrowserUI(headless=use_headless, start_url=start)
         br.start()
         emit("info", {"message": f"browser: {start}"})
         emit(
@@ -144,7 +146,11 @@ def _run(
         emit("error", {"message": str(e)})
     finally:
         if br:
-            br.close()
+            br.close(kill_process=not keep_open)
+            if keep_open:
+                msg = f"browser left open (workspace={workspace_dir()})"
+                print(msg, flush=True)
+                emit("info", {"message": msg})
 
 
 # --- HTTP server ---

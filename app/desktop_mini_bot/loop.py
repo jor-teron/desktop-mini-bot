@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — agent loop: short prompts, short JSON, last-3 history.
+"""desktop-mini-bot v0.2.3 — agent loop: short prompts, short JSON, last-3 history.
 
 Asks the LLM for one action per step, applies it on a UI surface, until done or max_steps.
 Every llm.complete path (including schema repair) goes through RateLimiter when provided.

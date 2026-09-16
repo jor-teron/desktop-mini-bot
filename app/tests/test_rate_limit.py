@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — RateLimiter unit tests (gap, RPM, token_rate).
+"""desktop-mini-bot v0.2.3 — RateLimiter unit tests (gap, RPM, token_rate).
 
 Uses an injectable fake clock/sleeper — no real wall-clock waits.
 Part of the lightweight no-vision Linux CUA (stdlib only).

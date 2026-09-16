@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — CLI entry point (python -m desktop_mini_bot).
+"""desktop-mini-bot v0.2.3 — CLI entry point (python -m desktop_mini_bot).
 
 Parses flags, loads config.txt, launches Chromium via CDP, and runs the agent loop.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -90,11 +90,12 @@ def main(argv: list[str] | None = None) -> int:
 
     browser = None
     steps: list = []
+    headless = bool(args.headless or cfg.get("headless", False))
+    keep_open = bool(cfg.get("keep_browser_open", True)) and not headless
     try:
         from .browser import BrowserUI
 
         start = _start_url(args, cfg, args.goal)
-        headless = bool(args.headless or cfg.get("headless", False))
         browser = BrowserUI(headless=headless, start_url=start)
         browser.start()
         print(f"browser: {start} (headless={headless})", flush=True)
@@ -122,7 +123,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     finally:
         if browser is not None:
-            browser.close()
+            browser.close(kill_process=not keep_open)
+            if keep_open:
+                from .paths import workspace_dir
+                print(f"browser left open (workspace={workspace_dir()})", flush=True)
 
     if not steps or steps[-1]["action"].get("a") != "done":
         print("warning: stopped without done", file=sys.stderr)

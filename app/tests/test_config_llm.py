@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.2 — config.txt mutation and LLM factory tests.
+"""desktop-mini-bot v0.2.3 — config.txt mutation and LLM factory tests.
 
 Ensures set_keys preserves api_key and Gemini requires a non-empty key.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -56,6 +56,11 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(data["rpm_limit"], 15)
             cfg = load_config(p)
             self.assertEqual(cfg["token_rate"], 10)
+
+    def test_keep_browser_open_default(self) -> None:
+        """keep_browser_open defaults to True in DEFAULTS."""
+        from desktop_mini_bot.config import DEFAULTS
+        self.assertIs(DEFAULTS["keep_browser_open"], True)
 
 
 if __name__ == "__main__":
