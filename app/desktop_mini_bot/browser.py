@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — browser hands via system Chromium CDP.
+"""desktop-mini-bot v0.2.2 — browser hands via system Chromium CDP.
 
 Tags interactive DOM nodes with data-dmb refs and applies agent actions (no pip).
 Part of the lightweight no-vision Linux CUA (stdlib only).

@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — CLI entry point (python -m desktop_mini_bot).
+"""desktop-mini-bot v0.2.2 — CLI entry point (python -m desktop_mini_bot).
 
 Parses flags, loads config.txt, launches Chromium via CDP, and runs the agent loop.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -14,6 +14,7 @@ import sys
 from .config import load_config
 from .llm import make_llm, guess_url
 from .loop import SYSTEM_BROWSER, run_loop
+from .rate_limit import RateLimiter
 from .paths import config_path, ensure_config
 
 
@@ -110,6 +111,11 @@ def main(argv: list[str] | None = None) -> int:
             max_steps=int(cfg["max_steps"]),
             system_prompt=SYSTEM_BROWSER,
             on_step=on_step,
+            rate_limiter=RateLimiter(
+                token_rate=int(cfg.get("token_rate") or 0),
+                request_gap_sec=float(cfg.get("request_gap_sec") or 0),
+                rpm_limit=int(cfg.get("rpm_limit") or 0),
+            ),
         )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)

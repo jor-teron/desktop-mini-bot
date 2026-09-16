@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — short-JSON action schema (token-cheap).
+"""desktop-mini-bot v0.2.2 — short-JSON action schema (token-cheap).
 
 Parses model output into validated long-key action dicts and compact wire form.
 Part of the lightweight no-vision Linux CUA (stdlib only).

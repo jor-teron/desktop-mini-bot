@@ -1,4 +1,4 @@
-# desktop-mini-bot v0.2.1 — plain text config (copy to config.txt)
+# desktop-mini-bot v0.2.2 — plain text config (copy to config.txt)
 # MIT / jor-teron — do not commit config.txt (it holds secrets).
 
 # --- provider ---
@@ -25,6 +25,16 @@ max_tokens=120
 temperature=0.1
 # Safety cap on observe→act iterations per goal
 max_steps=20
+
+# --- rate limits (0 = unlimited / no pacing; online-friendly defaults) ---
+token_rate=0
+# tokens per second pacing for model output; 0 = no limit; e.g. 10 for ~10 tok/s feel
+
+request_gap_sec=0
+# minimum seconds between LLM requests; 0 = no gap; e.g. 5
+
+rpm_limit=0
+# max LLM requests per rolling 60s window; 0 = no RPM cap; e.g. 15 for free-tier Flash-Lite
 
 # --- browser ---
 # true/1/yes/on = hide Chromium window

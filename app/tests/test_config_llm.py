@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — config.txt mutation and LLM factory tests.
+"""desktop-mini-bot v0.2.2 — config.txt mutation and LLM factory tests.
 
 Ensures set_keys preserves api_key and Gemini requires a non-empty key.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -36,6 +36,26 @@ class TestConfig(unittest.TestCase):
     def test_guess_url(self) -> None:
         """Natural-language google goal maps to https://www.google.com."""
         self.assertEqual(guess_url("open google.com"), "https://www.google.com")
+
+
+    def test_rate_limit_defaults(self) -> None:
+        """DEFAULTS leave token_rate / gap / rpm at unlimited (0)."""
+        from desktop_mini_bot.config import DEFAULTS, load_txt, load_config
+        self.assertEqual(DEFAULTS["token_rate"], 0)
+        self.assertEqual(DEFAULTS["request_gap_sec"], 0.0)
+        self.assertEqual(DEFAULTS["rpm_limit"], 0)
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "config.txt"
+            p.write_text(
+                "token_rate=10\nrequest_gap_sec=1.5\nrpm_limit=15\n",
+                encoding="utf-8",
+            )
+            data = load_txt(p)
+            self.assertEqual(data["token_rate"], 10)
+            self.assertEqual(data["request_gap_sec"], 1.5)
+            self.assertEqual(data["rpm_limit"], 15)
+            cfg = load_config(p)
+            self.assertEqual(cfg["token_rate"], 10)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — minimal Chromium CDP client (stdlib only).
+"""desktop-mini-bot v0.2.2 — minimal Chromium CDP client (stdlib only).
 
 Raw WebSocket + HTTP to talk to --remote-debugging-port; no Playwright/pip.
 Part of the lightweight no-vision Linux CUA (stdlib only).

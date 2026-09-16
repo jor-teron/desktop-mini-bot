@@ -1,6 +1,7 @@
-"""desktop-mini-bot v0.2.1 — agent loop: short prompts, short JSON, last-3 history.
+"""desktop-mini-bot v0.2.2 — agent loop: short prompts, short JSON, last-3 history.
 
 Asks the LLM for one action per step, applies it on a UI surface, until done or max_steps.
+Every llm.complete path (including schema repair) goes through RateLimiter when provided.
 Part of the lightweight no-vision Linux CUA (stdlib only).
 MIT / jor-teron.
 """
@@ -12,6 +13,7 @@ from typing import Any, Callable, Protocol
 
 from .fake_ui import FakeUI
 from .llm import LLMClient
+from .rate_limit import RateLimiter
 from .schema import SchemaError, parse_action, to_wire
 
 
@@ -66,16 +68,25 @@ def run_loop(
     max_steps: int = 12,
     system_prompt: str | None = None,
     on_step: Callable[[dict[str, Any]], None] | None = None,
+    rate_limiter: RateLimiter | None = None,
 ) -> list[dict[str, Any]]:
     """Run the observe → LLM → parse → apply cycle until done or max_steps.
 
     Returns a list of step records: {step, action (wire), result, raw}.
     Retries once if the first LLM reply fails schema validation.
+    When rate_limiter is set, every complete (including repair) goes through it.
     """
     ui = ui or FakeUI()
     system = system_prompt or SYSTEM_DESKTOP
     history: list[dict[str, Any]] = []
     steps: list[dict[str, Any]] = []
+    limiter = rate_limiter or RateLimiter()
+
+    def _complete(messages: list[dict[str, str]]) -> str:
+        """LLM complete via RateLimiter (gap / RPM / token_rate)."""
+        return limiter.call_complete(
+            llm, messages, max_tokens=max_tokens, temperature=temperature
+        )
 
     for step in range(1, max_steps + 1):
         # Only last 3 wire actions — keeps the prompt tiny for slow models
@@ -90,7 +101,7 @@ def run_loop(
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
-        raw = llm.complete(messages, max_tokens=max_tokens, temperature=temperature)
+        raw = _complete(messages)
         try:
             action = parse_action(raw)
         except (SchemaError, json.JSONDecodeError) as e:
@@ -101,7 +112,7 @@ def run_loop(
             )
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": repair})
-            raw = llm.complete(messages, max_tokens=max_tokens, temperature=temperature)
+            raw = _complete(messages)
             action = parse_action(raw)
 
         result = ui.apply(action)

@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — tiny fake UI for unit tests (no real desktop).
+"""desktop-mini-bot v0.2.2 — tiny fake UI for unit tests (no real desktop).
 
 Implements the same compact_state / apply surface as BrowserUI for dry loop tests.
 Not used by the production Gemini/browser path.

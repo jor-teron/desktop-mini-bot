@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — agent loop with a stub LLM (no live network).
+"""desktop-mini-bot v0.2.2 — agent loop with a stub LLM (no live network).
 
 Uses FakeUI only; not a product mock path — production always uses real browser.
 Part of the lightweight no-vision Linux CUA (stdlib only).

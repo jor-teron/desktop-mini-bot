@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — minimal local chat UI (stdlib HTTP + SSE).
+"""desktop-mini-bot v0.2.2 — minimal local chat UI (stdlib HTTP + SSE).
 
 Serves chat.html and /api/* for config, models, save-key, and streaming agent runs.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from .config import load_config, set_keys
 from .llm import make_llm, guess_url
 from .loop import SYSTEM_BROWSER, run_loop
+from .rate_limit import RateLimiter
 from .paths import project_root
 
 CHAT = Path(__file__).with_name("static") / "chat.html"
@@ -123,6 +124,11 @@ def _run(
             on_step=lambda r: emit(
                 "step",
                 {"step": r["step"], "action": r["action"], "result": r["result"]},
+            ),
+            rate_limiter=RateLimiter(
+                token_rate=int(cfg.get("token_rate") or 0),
+                request_gap_sec=float(cfg.get("request_gap_sec") or 0),
+                rpm_limit=int(cfg.get("rpm_limit") or 0),
             ),
         )
         emit(

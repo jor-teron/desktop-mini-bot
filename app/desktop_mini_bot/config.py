@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — load/save plain-text config.txt (key=value).
+"""desktop-mini-bot v0.2.2 — load/save plain-text config.txt (key=value).
 
 Merges defaults with on-disk settings; preserves comments when updating keys.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -24,6 +24,10 @@ DEFAULTS: dict[str, Any] = {
     "max_steps": 20,  # agent loop safety cap
     "headless": False,  # hide Chromium window when true
     "start_url": "about:blank",
+    # --- rate limits (0 = unlimited / no pacing; online-friendly defaults) ---
+    "token_rate": 0,  # tokens/sec pacing after reply; 0 = no limit
+    "request_gap_sec": 0.0,  # min seconds between LLM requests
+    "rpm_limit": 0,  # max LLM requests per rolling 60s window
 }
 
 # Truthy strings for boolean config keys
@@ -35,9 +39,9 @@ _BOOL = {"1", "true", "yes", "on"}
 def _parse_value(key: str, raw: str) -> Any:
     """Coerce a raw string value based on the config key type."""
     v = raw.strip()
-    if key in {"max_tokens", "max_steps"}:
+    if key in {"max_tokens", "max_steps", "token_rate", "rpm_limit"}:
         return int(v)
-    if key == "temperature":
+    if key in {"temperature", "request_gap_sec"}:
         return float(v)
     if key in {"headless", "dry_run"}:
         return v.lower() in _BOOL

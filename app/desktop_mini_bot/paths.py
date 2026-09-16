@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.1 — project paths (repo root, config, chrome profile).
+"""desktop-mini-bot v0.2.2 — project paths (repo root, config, chrome profile).
 
 Everything lives under the repo; Python package code is in app/.
 Part of the lightweight no-vision Linux CUA (stdlib only).
