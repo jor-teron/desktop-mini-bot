@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — minimal Chromium CDP client (stdlib only).
+"""desktop-mini-bot v0.2.4 — minimal Chromium CDP client (stdlib only).
 
 Raw WebSocket + HTTP to talk to --remote-debugging-port; no Playwright/pip.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -133,22 +133,53 @@ class Cdp:
 
 def find_chromium() -> str:
     """Locate a system Chromium/Chrome binary on PATH."""
+    from shutil import which
     for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome"):
-        from shutil import which
         p = which(name)
         if p:
             return p
     raise CdpError("No Chromium/Chrome found (sudo apt install chromium)")
 
 
-def launch_chromium(port: int = 9222, headless: bool = False, url: str = "about:blank") -> subprocess.Popen:
+def resolve_browser_bin(browser_bin: str | None = None) -> str:
+    """Resolve browser executable from config.
+
+    - ``auto`` / empty / None → find_chromium()
+    - absolute path (or path containing /) → use as-is if it exists
+    - bare name (e.g. google-chrome-stable) → shutil.which
+    """
+    from shutil import which
+    from pathlib import Path as _P
+
+    raw = (browser_bin or "auto").strip()
+    if not raw or raw.lower() == "auto":
+        return find_chromium()
+    path = _P(raw)
+    # Absolute path or relative path with separator
+    if path.is_absolute() or "/" in raw:
+        if path.is_file():
+            return str(path.resolve())
+        raise CdpError(f"browser_bin path not found: {raw}")
+    found = which(raw)
+    if found:
+        return found
+    raise CdpError(f"browser_bin not on PATH: {raw}")
+
+
+def launch_chromium(
+    port: int = 9222,
+    headless: bool = False,
+    url: str = "about:blank",
+    browser_bin: str | None = None,
+) -> subprocess.Popen:
     """Start Chromium with remote debugging on port and a dedicated AI user-data-dir.
 
     Uses app/chrome-data/ only — never the user's personal Chrome profile.
     When not headless, adds --start-maximized for a full window on Linux.
+    browser_bin: auto | binary name | absolute path (see resolve_browser_bin).
     """
     from .paths import chrome_dir
-    bin_path = find_chromium()
+    bin_path = resolve_browser_bin(browser_bin)
     profile = str(chrome_dir())
     args = [
         bin_path,

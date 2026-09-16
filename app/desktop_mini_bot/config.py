@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — load/save plain-text config.txt (key=value).
+"""desktop-mini-bot v0.2.4 — load/save plain-text config.txt (key=value).
 
 Merges defaults with on-disk settings; preserves comments when updating keys.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -21,11 +21,13 @@ DEFAULTS: dict[str, Any] = {
     "ollama_api_key": "ollama",  # placeholder for local Ollama
     "max_tokens": 120,  # LLM reply budget per step
     "temperature": 0.1,  # low = more deterministic JSON
-    "max_steps": 20,  # agent loop safety cap
+    "max_steps": 20,  # agent loop safety cap; 0 = unlimited (Stop / Ctrl+C)
     "headless": False,  # hide Chromium window when true
     # Leave Chromium running after a goal finishes (visible AI profile window)
     "keep_browser_open": True,
     "start_url": "about:blank",
+    # Browser binary: auto (find_chromium) | name on PATH | absolute path
+    "browser_bin": "auto",
     # --- rate limits (0 = unlimited / no pacing; online-friendly defaults) ---
     "token_rate": 0,  # tokens/sec pacing after reply; 0 = no limit
     "request_gap_sec": 0.0,  # min seconds between LLM requests

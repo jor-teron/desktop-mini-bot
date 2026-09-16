@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — CLI entry point (python -m desktop_mini_bot).
+"""desktop-mini-bot v0.2.4 — CLI entry point (python -m desktop_mini_bot).
 
 Parses flags, loads config.txt, launches Chromium via CDP, and runs the agent loop.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -14,7 +14,7 @@ import sys
 from .config import load_config
 from .llm import make_llm, guess_url
 from .loop import SYSTEM_BROWSER, run_loop
-from .rate_limit import RateLimiter
+from .rate_limit import RateLimiter, RunStats
 from .paths import config_path, ensure_config
 
 
@@ -96,12 +96,19 @@ def main(argv: list[str] | None = None) -> int:
         from .browser import BrowserUI
 
         start = _start_url(args, cfg, args.goal)
-        browser = BrowserUI(headless=headless, start_url=start)
+        browser_bin = str(cfg.get("browser_bin") or "auto")
+        browser = BrowserUI(headless=headless, start_url=start, browser_bin=browser_bin)
         browser.start()
-        print(f"browser: {start} (headless={headless})", flush=True)
+        print(f"browser: {start} (headless={headless}, bin={browser_bin})", flush=True)
         print(
             f"config: {cfg_path} provider={cfg.get('provider')} model={cfg.get('model')}",
             flush=True,
+        )
+        limiter = RateLimiter(
+            token_rate=int(cfg.get("token_rate") or 0),
+            request_gap_sec=float(cfg.get("request_gap_sec") or 0),
+            rpm_limit=int(cfg.get("rpm_limit") or 0),
+            stats=RunStats(),
         )
         steps = run_loop(
             goal=args.goal,
@@ -112,12 +119,15 @@ def main(argv: list[str] | None = None) -> int:
             max_steps=int(cfg["max_steps"]),
             system_prompt=SYSTEM_BROWSER,
             on_step=on_step,
-            rate_limiter=RateLimiter(
-                token_rate=int(cfg.get("token_rate") or 0),
-                request_gap_sec=float(cfg.get("request_gap_sec") or 0),
-                rpm_limit=int(cfg.get("rpm_limit") or 0),
-            ),
+            rate_limiter=limiter,
         )
+        if limiter.stats:
+            s = limiter.stats.as_dict()
+            print(
+                f"stats: requests={s['requests']} in={s['tokens_in']} "
+                f"out={s['tokens_out']} ~tok/s={s['tok_s']}",
+                flush=True,
+            )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

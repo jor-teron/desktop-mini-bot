@@ -1,4 +1,4 @@
-# desktop-mini-bot v0.2.3 — plain text config (copy to config.txt)
+# desktop-mini-bot v0.2.4 — plain text config (copy to config.txt)
 # MIT / jor-teron — do not commit config.txt (it holds secrets).
 #
 # Layout (project root):
@@ -28,7 +28,7 @@ ollama_api_key=ollama
 max_tokens=120
 # Sampling temperature (low = more stable JSON)
 temperature=0.1
-# Safety cap on observe→act iterations per goal
+# Safety cap on observe→act iterations per goal; 0 = no limit (Stop / Ctrl+C to abort)
 max_steps=20
 
 # --- rate limits (0 = unlimited / no pacing; online-friendly defaults) ---
@@ -48,4 +48,7 @@ headless=false
 keep_browser_open=true
 # Initial page if the goal does not imply a URL
 start_url=about:blank
+# Browser binary: auto (find system Chromium/Chrome) | name on PATH | absolute path
+# e.g. browser_bin=chromium  or  browser_bin=/usr/bin/google-chrome-stable
+browser_bin=auto
 # Downloads go to ./workspace/ (project root). Profile is app/chrome-data/ only.

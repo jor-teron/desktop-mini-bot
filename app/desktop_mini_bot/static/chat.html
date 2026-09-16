@@ -1,6 +1,7 @@
 <!--
-  desktop-mini-bot v0.2.3 — local chat UI (served by ui_server.py).
+  desktop-mini-bot v0.2.4 — local chat UI (served by ui_server.py).
   Provider/model picker, API key save to config.txt, SSE agent run log.
+  Stop button cancels the active run; #stats shows live request/token counters.
   Part of the lightweight no-vision Linux CUA (stdlib only). MIT / jor-teron.
 -->
 <!DOCTYPE html>
@@ -15,9 +16,10 @@ textarea{min-height:4.5rem}
 .opts{margin:.6rem 0;color:#aaa;font-size:.9rem;display:flex;flex-wrap:wrap;gap:.8rem;align-items:center}
 label.block{display:block;margin:.5rem 0 .25rem;color:#aaa;font-size:.85rem}
 button{margin-right:.4rem;padding:.45rem .9rem;border:0;border-radius:8px;background:#3d8bfd;color:#fff;cursor:pointer}
-button.secondary{background:#333}button:disabled{opacity:.5}
+button.secondary{background:#333}button.danger{background:#a33}button:disabled{opacity:.5}
 #log{white-space:pre-wrap;font:12px ui-monospace,monospace;background:#1a1a1a;border-radius:8px;padding:.8rem;min-height:8rem;margin-top:1rem}
 #status{color:#8ab;margin:.5rem 0;font-size:.9rem}.err{color:#f66}.ok{color:#6c6}
+#stats{color:#888;font:12px ui-monospace,monospace;margin:.25rem 0;min-height:1.2em}
 .row{display:flex;gap:.5rem;align-items:center} .row>*{flex:1} .row button{flex:0}
 </style>
 <h1>desktop-mini-bot</h1>
@@ -39,13 +41,25 @@ button.secondary{background:#333}button:disabled{opacity:.5}
 <label><input id="h" type="checkbox"> Headless</label>
 </div>
 <button id="go">Send</button>
+<button type="button" class="danger" id="stopBtn" disabled>Stop</button>
 <button type="button" class="secondary" id="clearLog">Clear</button>
 <div id="status">Ready</div>
+<div id="stats"></div>
 <pre id="log"></pre>
 <script>
 const log=document.getElementById('log'),st=document.getElementById('status'),go=document.getElementById('go');
+const stopBtn=document.getElementById('stopBtn'),statsEl=document.getElementById('stats');
 const modelEl=document.getElementById('model'),providerEl=document.getElementById('provider'),apiKeyEl=document.getElementById('apiKey');
 const line=t=>log.textContent+=t+'\n';
+function fmtStats(o){
+  if(!o) return '';
+  const est=o.tokens_est?'~':'';
+  return `requests=${o.requests||0} · in=${est}${o.tokens_in||0} · out=${est}${o.tokens_out||0} · ~tok/s=${o.tok_s||0}`;
+}
+function setRunning(on){
+  go.disabled=!!on;
+  stopBtn.disabled=!on;
+}
 async function loadConfig(){
   try{
     const r=await fetch('/api/config'); const j=await r.json();
@@ -86,10 +100,16 @@ document.getElementById('saveKey').onclick=async()=>{
   if(j.ok){st.className='ok';st.textContent='API key saved to config.txt';apiKeyEl.value='';apiKeyEl.placeholder='saved in config.txt (leave blank to keep)'}
   else{st.className='err';st.textContent=j.error||'Save failed'}
 };
+stopBtn.onclick=async()=>{
+  try{
+    await fetch('/api/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    st.className='';st.textContent='Stopping…';
+  }catch(e){st.className='err';st.textContent=String(e)}
+};
 async function run(){
   const goal=document.getElementById('g').value.trim();
   if(!goal){st.className='err';st.textContent='Type a goal';return}
-  go.disabled=true;st.className='';st.textContent='Running…';line('— '+goal);
+  setRunning(true);st.className='';st.textContent='Running…';statsEl.textContent='';line('— '+goal);
   const body={goal,headless:h.checked,model:modelEl.value||null,provider:providerEl.value};
   const typed=apiKeyEl.value.trim();
   if(typed) body.api_key=typed;
@@ -110,17 +130,22 @@ async function run(){
         if(!data)continue;
         let o;try{o=JSON.parse(data)}catch{line(data);continue}
         if(ev==='step')line(`[${o.step}] ${JSON.stringify(o.action)} -> ${o.result}`);
+        else if(ev==='stats'){statsEl.textContent=fmtStats(o)}
         else if(ev==='info')line(o.message||'');
-        else if(ev==='done'){st.className='ok';st.textContent=o.message||'Done'}
+        else if(ev==='done'){
+          st.className='ok';st.textContent=o.message||'Done';
+          if(o.stats) statsEl.textContent=fmtStats(o.stats);
+        }
         else if(ev==='error'){st.className='err';st.textContent=o.message||'Error';line('error: '+o.message)}
       }
     }
     if(!st.className){st.className='ok';st.textContent='Finished'}
   }catch(e){st.className='err';st.textContent=String(e);line('error: '+e)}
-  finally{go.disabled=false}
+  finally{setRunning(false)}
 }
 document.getElementById('clearLog').onclick=()=>{
   log.textContent='';
+  statsEl.textContent='';
   st.className='';
   st.textContent='Ready';
 };

@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — unit test package.
+"""desktop-mini-bot v0.2.4 — unit test package.
 
 Stdlib unittest only; no network required except optional Chromium smoke.
 MIT / jor-teron.

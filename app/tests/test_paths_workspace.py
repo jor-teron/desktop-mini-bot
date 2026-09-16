@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — paths.workspace_dir and keep_browser_open defaults.
+"""desktop-mini-bot v0.2.4 — paths.workspace_dir and keep_browser_open defaults.
 
 No live Chromium required.
 Part of the lightweight no-vision Linux CUA (stdlib only).

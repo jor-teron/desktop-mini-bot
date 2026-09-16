@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# desktop-mini-bot v0.2.3 — convenience launcher for CLI / chat UI.
+# desktop-mini-bot v0.2.4 — convenience launcher for CLI / chat UI.
 # Sets PYTHONPATH=app and forwards flags to python -m desktop_mini_bot.
 # MIT / jor-teron.
 set -euo pipefail

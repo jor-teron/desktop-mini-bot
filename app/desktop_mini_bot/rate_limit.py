@@ -1,7 +1,8 @@
-"""desktop-mini-bot v0.2.3 — LLM request pacing (gap, RPM, token_rate).
+"""desktop-mini-bot v0.2.4 — LLM request pacing (gap, RPM, token_rate) + RunStats.
 
 RateLimiter sleeps around llm.complete() so free-tier / local pacing stays polite.
 Token pacing uses approx tokens = max(1, len(text)//4) (chars/4); does not stream-edit the API.
+Optional RunStats tracks requests / tokens_in / tokens_out (API usage or estimate).
 Part of the lightweight no-vision Linux CUA (stdlib only).
 MIT / jor-teron.
 """
@@ -10,7 +11,8 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 
 # Approx tokens from completion text length (chars/4, at least 1).
@@ -19,12 +21,50 @@ def approx_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _messages_chars(messages: list) -> int:
+    """Sum of content lengths across chat messages (for input token estimate)."""
+    total = 0
+    for m in messages or []:
+        if isinstance(m, dict):
+            total += len(str(m.get("content") or ""))
+        else:
+            total += len(str(m))
+    return total
+
+
+# --- RunStats ---
+
+@dataclass
+class RunStats:
+    """Live counters for one agent run (requests + token usage)."""
+
+    requests: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    tokens_est: bool = True  # False once any API usageMetadata/usage was used
+    started_at: float = field(default_factory=time.monotonic)
+
+    def as_dict(self, *, now: float | None = None) -> dict[str, Any]:
+        """Snapshot for SSE / logs: requests, in/out tokens, ~tok/s."""
+        t = now if now is not None else time.monotonic()
+        elapsed = max(1e-6, t - self.started_at)
+        return {
+            "requests": self.requests,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "tokens_est": self.tokens_est,
+            "elapsed_sec": round(elapsed, 2),
+            "tok_s": round(self.tokens_out / elapsed, 1),
+        }
+
+
 # --- RateLimiter ---
 
 class RateLimiter:
     """Enforce request_gap_sec, rpm_limit (sliding 60s), and post-reply token_rate pacing.
 
     Inject sleep/monotonic for unit tests. All limits treat 0 as unlimited / no pacing.
+    Optional ``stats`` (RunStats) is incremented on each call_complete.
     """
 
     def __init__(
@@ -35,8 +75,9 @@ class RateLimiter:
         rpm_limit: int = 0,
         sleep: Callable[[float], None] | None = None,
         monotonic: Callable[[], float] | None = None,
+        stats: RunStats | None = None,
     ) -> None:
-        """Store limits; optional injectable clock/sleeper for tests."""
+        """Store limits; optional injectable clock/sleeper and RunStats for tests/UI."""
         self.token_rate = int(token_rate or 0)
         self.request_gap_sec = float(request_gap_sec or 0.0)
         self.rpm_limit = int(rpm_limit or 0)
@@ -44,6 +85,12 @@ class RateLimiter:
         self._monotonic = monotonic or time.monotonic
         self._last_request_at: float | None = None
         self._request_times: deque[float] = deque()
+        self.stats = stats  # None = do not track; UI/loop may pass RunStats()
+
+    def reset_stats(self) -> RunStats:
+        """Start a fresh RunStats attached to this limiter; return it."""
+        self.stats = RunStats(started_at=self._monotonic())
+        return self.stats
 
     # --- before LLM call ---
 
@@ -91,6 +138,28 @@ class RateLimiter:
         if wait > 0:
             self._sleep(wait)
 
+    def _record_usage(self, llm: object, messages: list, text: str) -> None:
+        """Bump RunStats from llm.last_usage when present, else chars/4 estimates."""
+        if self.stats is None:
+            return
+        self.stats.requests += 1
+        usage = getattr(llm, "last_usage", None)
+        if isinstance(usage, dict) and (
+            usage.get("prompt_tokens") is not None or usage.get("completion_tokens") is not None
+        ):
+            tin = int(usage.get("prompt_tokens") or 0)
+            tout = int(usage.get("completion_tokens") or 0)
+            self.stats.tokens_in += max(0, tin)
+            self.stats.tokens_out += max(0, tout)
+            self.stats.tokens_est = False
+            return
+        # Estimate: sum of message lens // 4 for in; reply chars//4 for out
+        tin = max(1, _messages_chars(messages) // 4)
+        tout = approx_tokens(text)
+        self.stats.tokens_in += tin
+        self.stats.tokens_out += tout
+        # leave tokens_est True unless we previously saw API usage
+
     # --- wrap complete ---
 
     def call_complete(
@@ -101,9 +170,10 @@ class RateLimiter:
         max_tokens: int,
         temperature: float,
     ) -> str:
-        """before_request → llm.complete → after_response; return completion text."""
+        """before_request → llm.complete → after_response; update stats; return text."""
         self.before_request()
         started = self._monotonic()
         text = llm.complete(messages, max_tokens=max_tokens, temperature=temperature)  # type: ignore[attr-defined]
         self.after_response(text, started_at=started)
+        self._record_usage(llm, messages, text)
         return text

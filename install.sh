@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# desktop-mini-bot v0.2.3 — one-paste install/update (no pip; all under project dir)
+# desktop-mini-bot v0.2.4 — one-paste install/update (no pip; all under project dir)
 #   curl -fsSL https://raw.githubusercontent.com/jor-teron/desktop-mini-bot/main/install.sh | bash
 # MIT / jor-teron.
 set -euo pipefail
@@ -116,11 +116,11 @@ fi
 # --- smoke verify ---
 ( cd "$ROOT" && PYTHONPATH=app python3 -c "from desktop_mini_bot.llm import make_llm, guess_url; from desktop_mini_bot.schema import parse_action; assert guess_url('open google.com'); parse_action('{\"a\":\"done\",\"s\":\"ok\"}'); print('ok')" ) \
   || die "verify failed"
-ok "Verify passed (v0.2.3)"
+ok "Verify passed (v0.2.4)"
 
 cat <<S
 
-${GRN}Ready 0.2.3${RST} — $ROOT
+${GRN}Ready 0.2.4${RST} — $ROOT
   Config: $ROOT/config.txt   (set api_key= for Gemini)
   Chat:   $ROOT/run.sh --ui
   Run:    $ROOT/run.sh --browser "open google.com"

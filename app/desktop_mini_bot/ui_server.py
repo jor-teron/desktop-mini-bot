@@ -1,6 +1,7 @@
-"""desktop-mini-bot v0.2.3 — minimal local chat UI (stdlib HTTP + SSE).
+"""desktop-mini-bot v0.2.4 — minimal local chat UI (stdlib HTTP + SSE).
 
-Serves chat.html and /api/* for config, models, save-key, and streaming agent runs.
+Serves chat.html and /api/* for config, models, save-key, stop, and streaming agent runs.
+Tracks a per-server cancel Event so the chat Stop button can abort the active run.
 Part of the lightweight no-vision Linux CUA (stdlib only).
 MIT / jor-teron.
 """
@@ -8,6 +9,7 @@ MIT / jor-teron.
 from __future__ import annotations
 
 import json
+import threading
 import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,7 +20,7 @@ from urllib.parse import urlparse
 from .config import load_config, set_keys
 from .llm import make_llm, guess_url
 from .loop import SYSTEM_BROWSER, run_loop
-from .rate_limit import RateLimiter
+from .rate_limit import RateLimiter, RunStats
 from .paths import project_root, workspace_dir
 
 CHAT = Path(__file__).with_name("static") / "chat.html"
@@ -74,6 +76,7 @@ def _run(
     provider: str | None,
     api_key: str | None,
     emit: Callable,
+    stop_event: threading.Event,
 ) -> None:
     """Load config (optionally persist overrides), start BrowserUI, stream steps via emit."""
     cfg = load_config(config)
@@ -102,11 +105,18 @@ def _run(
     br = None
     use_headless = headless or bool(cfg.get("headless"))
     keep_open = bool(cfg.get("keep_browser_open", True)) and not use_headless
+    limiter = RateLimiter(
+        token_rate=int(cfg.get("token_rate") or 0),
+        request_gap_sec=float(cfg.get("request_gap_sec") or 0),
+        rpm_limit=int(cfg.get("rpm_limit") or 0),
+        stats=RunStats(),
+    )
     try:
         from .browser import BrowserUI
 
         start = _start_url(goal, cfg)
-        br = BrowserUI(headless=use_headless, start_url=start)
+        browser_bin = str(cfg.get("browser_bin") or "auto")
+        br = BrowserUI(headless=use_headless, start_url=start, browser_bin=browser_bin)
         br.start()
         emit("info", {"message": f"browser: {start}"})
         emit(
@@ -127,25 +137,30 @@ def _run(
                 "step",
                 {"step": r["step"], "action": r["action"], "result": r["result"]},
             ),
-            rate_limiter=RateLimiter(
-                token_rate=int(cfg.get("token_rate") or 0),
-                request_gap_sec=float(cfg.get("request_gap_sec") or 0),
-                rpm_limit=int(cfg.get("rpm_limit") or 0),
-            ),
+            on_stats=lambda s: emit("stats", s),
+            rate_limiter=limiter,
+            should_stop=stop_event.is_set,
         )
+        stats = limiter.stats.as_dict() if limiter.stats else {}
+        if stop_event.is_set():
+            msg = "Stopped by user."
+        elif steps and steps[-1]["action"].get("a") == "done":
+            msg = "Done."
+        else:
+            msg = "Stopped."
         emit(
             "done",
             {
-                "message": "Done."
-                if steps and steps[-1]["action"].get("a") == "done"
-                else "Stopped.",
+                "message": msg,
                 "steps": len(steps),
+                "stats": stats,
             },
         )
     except Exception as e:
         emit("error", {"message": str(e)})
     finally:
         if br:
+            # On stop: do NOT kill browser if keep_browser_open (same as normal end)
             br.close(kill_process=not keep_open)
             if keep_open:
                 msg = f"browser left open (workspace={workspace_dir()})"
@@ -162,6 +177,9 @@ def serve(
     open_browser: bool = True,
 ) -> None:
     """Bind a local ThreadingHTTPServer; open the chat page; block until Ctrl+C."""
+    # Cancel flag for the active UI run (POST /api/stop sets it)
+    stop_event = threading.Event()
+
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_a):
             return  # quiet access log
@@ -230,6 +248,17 @@ def serve(
                 self.send_error(400)
                 return
 
+            if path == "/api/stop":
+                # Signal the active run_loop to break between steps
+                stop_event.set()
+                body = b'{"ok":true}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
             if path == "/api/save-key":
                 # Persist provider / model / api_key into config.txt
                 try:
@@ -266,6 +295,8 @@ def serve(
             if not goal:
                 self.send_error(400)
                 return
+            # Fresh cancel flag for this run
+            stop_event.clear()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -289,6 +320,7 @@ def serve(
                 str(p["provider"]) if p.get("provider") else None,
                 str(api_key) if api_key is not None else None,
                 emit,
+                stop_event,
             )
 
     httpd = ThreadingHTTPServer((host, port), H)

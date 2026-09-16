@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — browser hands via system Chromium CDP.
+"""desktop-mini-bot v0.2.4 — browser hands via system Chromium CDP.
 
 Tags interactive DOM nodes with data-dmb refs and applies agent actions (no pip).
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -40,6 +40,7 @@ class BrowserUI:
     headless: bool = False
     start_url: str = "about:blank"
     port: int = 9222  # remote-debugging-port
+    browser_bin: str = "auto"  # auto | name on PATH | absolute path
     _proc: Any = field(default=None, repr=False)
     _cdp: Cdp | None = field(default=None, repr=False)
     _elements: list[dict[str, str]] = field(default_factory=list)  # {ref, role, name}
@@ -48,7 +49,7 @@ class BrowserUI:
 
     def start(self) -> None:
         """Launch Chromium, connect CDP, enable Runtime/Page, set downloads, maximize, refresh."""
-        self._proc = launch_chromium(self.port, self.headless, self.start_url)
+        self._proc = launch_chromium(self.port, self.headless, self.start_url, browser_bin=self.browser_bin)
         self._cdp = Cdp(wait_ws_url(self.port))
         self._cdp.call("Runtime.enable")
         self._cdp.call("Page.enable")

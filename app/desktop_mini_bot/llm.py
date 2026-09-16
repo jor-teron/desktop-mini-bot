@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — LLM backends: Gemini (default) + Ollama.
+"""desktop-mini-bot v0.2.4 — LLM backends: Gemini (default) + Ollama.
 
 Stdlib urllib only; no mock/demo provider. API key comes from config.txt.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -52,6 +52,7 @@ class GeminiLLM:
             )
         self.api_key = api_key.strip()
         self.model = model.strip() or "gemini-3.5-flash-lite"
+        self.last_usage: dict | None = None  # filled by complete() from usageMetadata
 
     def complete(self, messages: list[dict[str, str]], *, max_tokens: int, temperature: float) -> str:
         """Map OpenAI-style messages to Gemini contents + systemInstruction; return text."""
@@ -95,6 +96,16 @@ class GeminiLLM:
         except urllib.error.URLError as e:
             raise RuntimeError(f"Gemini request failed: {e}") from e
 
+        # Stash usage for RateLimiter / RunStats when present
+        self.last_usage = None
+        um = payload.get("usageMetadata") if isinstance(payload, dict) else None
+        if isinstance(um, dict):
+            self.last_usage = {
+                "prompt_tokens": int(um.get("promptTokenCount") or 0),
+                "completion_tokens": int(um.get("candidatesTokenCount") or 0),
+                "total_tokens": int(um.get("totalTokenCount") or 0),
+            }
+
         try:
             parts = payload["candidates"][0]["content"]["parts"]
             texts = [p.get("text", "") for p in parts if "text" in p]
@@ -113,6 +124,7 @@ class OllamaLLM:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key or "ollama"
         self.model = model
+        self.last_usage: dict | None = None  # filled by complete() from usage if present
 
     def complete(self, messages: list[dict[str, str]], *, max_tokens: int, temperature: float) -> str:
         """POST chat completions; return the assistant message content."""
@@ -143,6 +155,16 @@ class OllamaLLM:
             ) from e
         except urllib.error.URLError as e:
             raise RuntimeError(f"Ollama request failed: {e}") from e
+        # OpenAI-compat usage: prompt_tokens / completion_tokens
+        self.last_usage = None
+        usage = payload.get("usage") if isinstance(payload, dict) else None
+        if isinstance(usage, dict):
+            self.last_usage = {
+                "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                "completion_tokens": int(usage.get("completion_tokens") or 0),
+                "total_tokens": int(usage.get("total_tokens") or 0),
+            }
+
         try:
             return payload["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:

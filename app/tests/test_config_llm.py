@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — config.txt mutation and LLM factory tests.
+"""desktop-mini-bot v0.2.4 — config.txt mutation and LLM factory tests.
 
 Ensures set_keys preserves api_key and Gemini requires a non-empty key.
 Part of the lightweight no-vision Linux CUA (stdlib only).

@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — short-JSON schema parse / to_wire tests.
+"""desktop-mini-bot v0.2.4 — short-JSON schema parse / to_wire tests.
 
 Covers aliases, fences, and unknown-action rejection.
 Part of the lightweight no-vision Linux CUA (stdlib only).

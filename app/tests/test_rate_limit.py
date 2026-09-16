@@ -1,4 +1,4 @@
-"""desktop-mini-bot v0.2.3 — RateLimiter unit tests (gap, RPM, token_rate).
+"""desktop-mini-bot v0.2.4 — RateLimiter unit tests (gap, RPM, token_rate).
 
 Uses an injectable fake clock/sleeper — no real wall-clock waits.
 Part of the lightweight no-vision Linux CUA (stdlib only).
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 
-from desktop_mini_bot.rate_limit import RateLimiter, approx_tokens
+from desktop_mini_bot.rate_limit import RateLimiter, RunStats, approx_tokens
 
 
 # --- fake clock ---
@@ -108,6 +108,45 @@ class TestRateLimiter(unittest.TestCase):
         rl = RateLimiter(token_rate=0, sleep=clock.sleep, monotonic=clock.monotonic)
         out = rl.call_complete(Stub(), [], max_tokens=80, temperature=0.1)
         self.assertIn("done", out)
+
+
+    def test_stats_on_call_complete(self) -> None:
+        """call_complete increments RunStats requests and estimated tokens."""
+        clock = FakeClock()
+
+        class Stub:
+            def complete(self, messages, *, max_tokens, temperature):
+                return "abcd" * 10  # 40 chars → 10 tok out
+
+        rl = RateLimiter(
+            token_rate=0,
+            sleep=clock.sleep,
+            monotonic=clock.monotonic,
+            stats=RunStats(started_at=clock.t),
+        )
+        msgs = [{"role": "user", "content": "x" * 40}]
+        out = rl.call_complete(Stub(), msgs, max_tokens=80, temperature=0.1)
+        self.assertEqual(len(out), 40)
+        self.assertEqual(rl.stats.requests, 1)
+        self.assertGreaterEqual(rl.stats.tokens_out, 10)
+        self.assertGreaterEqual(rl.stats.tokens_in, 10)
+        self.assertTrue(rl.stats.tokens_est)
+
+    def test_stats_prefer_last_usage(self) -> None:
+        """When llm.last_usage is set, use API counts and clear tokens_est."""
+        clock = FakeClock()
+
+        class Stub:
+            last_usage = {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}
+
+            def complete(self, messages, *, max_tokens, temperature):
+                return "hi"
+
+        rl = RateLimiter(stats=RunStats(started_at=clock.t), sleep=clock.sleep, monotonic=clock.monotonic)
+        rl.call_complete(Stub(), [{"role": "user", "content": "hello"}], max_tokens=10, temperature=0)
+        self.assertEqual(rl.stats.tokens_in, 7)
+        self.assertEqual(rl.stats.tokens_out, 3)
+        self.assertFalse(rl.stats.tokens_est)
 
 
 if __name__ == "__main__":
